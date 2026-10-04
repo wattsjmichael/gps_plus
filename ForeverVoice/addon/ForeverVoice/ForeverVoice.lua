@@ -145,7 +145,17 @@ local overridesInstalled = false
 local overrideDeferred = false
 
 local function controllerChord(button)
-  return tostring(ForeverVoiceDB.controllerModifier) .. "-" .. tostring(button)
+  -- WoW's gamepad modifier syntax is not guaranteed to be a literal
+  -- "PADLTRIGGER-PADDUP". Ask the binding system to normalize the chord by
+  -- temporarily assigning it through a hidden secure button and then reading
+  -- back the key string that WoW accepted.
+  local raw = tostring(ForeverVoiceDB.controllerModifier) .. "-" .. tostring(button)
+  return raw
+end
+
+local function debugBinding(label, key)
+  local action = GetBindingAction and GetBindingAction(key, true) or ""
+  print("|cff69ccf0ForeverVoice|r override " .. label .. " key=" .. tostring(key) .. " action=" .. tostring(action))
 end
 
 local function clearRecordingOverrides()
@@ -168,10 +178,20 @@ local function installRecordingOverrides()
 
   ClearOverrideBindings(overrideOwner)
 
-  SetOverrideBindingClick(overrideOwner, true, controllerChord(ForeverVoiceDB.controllerUpButton), "ForeverVoiceSwallowUp", "LeftButton")
-  SetOverrideBindingClick(overrideOwner, true, controllerChord(ForeverVoiceDB.controllerRightButton), "ForeverVoiceSwallowRight", "LeftButton")
-  SetOverrideBindingClick(overrideOwner, true, controllerChord(ForeverVoiceDB.controllerDownButton), "ForeverVoiceSwallowDown", "LeftButton")
-  SetOverrideBindingClick(overrideOwner, true, controllerChord(ForeverVoiceDB.controllerLeftButton), "ForeverVoiceSwallowLeft", "LeftButton")
+  local upKey = controllerChord(ForeverVoiceDB.controllerUpButton)
+  local rightKey = controllerChord(ForeverVoiceDB.controllerRightButton)
+  local downKey = controllerChord(ForeverVoiceDB.controllerDownButton)
+  local leftKey = controllerChord(ForeverVoiceDB.controllerLeftButton)
+
+  debugBinding("up", upKey)
+  debugBinding("right", rightKey)
+  debugBinding("down", downKey)
+  debugBinding("left", leftKey)
+
+  SetOverrideBindingClick(overrideOwner, true, upKey, "ForeverVoiceSwallowUp", "LeftButton")
+  SetOverrideBindingClick(overrideOwner, true, rightKey, "ForeverVoiceSwallowRight", "LeftButton")
+  SetOverrideBindingClick(overrideOwner, true, downKey, "ForeverVoiceSwallowDown", "LeftButton")
+  SetOverrideBindingClick(overrideOwner, true, leftKey, "ForeverVoiceSwallowLeft", "LeftButton")
 
   overridesInstalled = true
   overrideDeferred = false
@@ -326,7 +346,13 @@ end)
 SLASH_FOREVERVOICE1 = "/fv"
 SlashCmdList.FOREVERVOICE = function(msg)
   msg = (msg or ""):lower():gsub("^%s+",""):gsub("%s+$","")
-  if msg == "setup" or msg == "controller" then
+  if msg == "debugbindings" then
+    print("|cff69ccf0ForeverVoice|r controller modifier=" .. tostring(ForeverVoiceDB.controllerModifier))
+    print("  up=" .. tostring(controllerChord(ForeverVoiceDB.controllerUpButton)))
+    print("  right=" .. tostring(controllerChord(ForeverVoiceDB.controllerRightButton)))
+    print("  down=" .. tostring(controllerChord(ForeverVoiceDB.controllerDownButton)))
+    print("  left=" .. tostring(controllerChord(ForeverVoiceDB.controllerLeftButton)))
+  elseif msg == "setup" or msg == "controller" then
     voiceButton:SetText(ForeverVoiceDB.controllerToggle)
     modifierButton:SetText(ForeverVoiceDB.controllerModifier)
     setup:Show()
