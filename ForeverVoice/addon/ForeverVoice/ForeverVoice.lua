@@ -1,7 +1,6 @@
 local ADDON_NAME = ...
 BINDING_HEADER_FOREVERVOICE = "ForeverVoice"
-BINDING_NAME_FOREVERVOICE_START = "Voice: Start Recording"
-BINDING_NAME_FOREVERVOICE_SEND = "Voice: Send"
+BINDING_NAME_FOREVERVOICE_TOGGLE = "Voice: Start / Send"
 BINDING_NAME_FOREVERVOICE_GENERAL = "Voice Channel: General"
 BINDING_NAME_FOREVERVOICE_TRADE = "Voice Channel: Trade"
 BINDING_NAME_FOREVERVOICE_PARTY = "Voice Channel: Party"
@@ -152,16 +151,15 @@ icon:SetScript("OnEnter", function(self)
 end)
 icon:SetScript("OnLeave", GameTooltip_Hide)
 
-function ForeverVoice_Start()
-  if state ~= "idle" then return end
-  preview = false
-  activeChannel = channel
-  queuedChannel = nil
-  state = "recording"
-  applyVisualState()
-end
-
-function ForeverVoice_Send()
+function ForeverVoice_Toggle()
+  if state == "idle" then
+    preview = false
+    activeChannel = channel
+    queuedChannel = nil
+    state = "recording"
+    applyVisualState()
+    return
+  end
   if state ~= "recording" then return end
   state = "transcribing"
   C_Timer.After(8, function()
@@ -202,9 +200,7 @@ observer:Show()
 
 observer:SetScript("OnKeyDown", function(_, key)
   if key == "F13" then
-    ForeverVoice_Start()
-  elseif key == "F14" then
-    ForeverVoice_Send()
+    ForeverVoice_Toggle()
   elseif key == "F15" then
     ForeverVoice_SelectChannel("general")
   elseif key == "F16" then
@@ -243,7 +239,7 @@ SlashCmdList.FOREVERVOICE = function(msg)
     print("|cff69ccf0ForeverVoice|r: channel = " .. CHANNELS[msg].name)
   else
     print("|cff69ccf0ForeverVoice|r")
-    print("F13 = start recording, F14 = send")
+    print("F13 = start recording / send")
     print("F15 = General, F16 = Trade, F17 = Party, F18 = Guild, F19 = Say")
     print("/fv move - show and drag the icon")
     print("/fv hide - hide preview")
