@@ -729,8 +729,8 @@ def main() -> None:
     ap.add_argument("--wow-dir", default=str(default_wow_dir()), help="WoW flavor directory (the _classic_beta_ folder)")
     ap.add_argument("--button", help="Override the trigger button from the addon, e.g. PADSOCIAL")
     ap.add_argument("--raw-button", type=int, help="Use a raw joystick button index instead of an SDL mapping")
-    ap.add_argument("--record-key", default="F12",
-                    help="Keyboard key used to toggle recording, ideal for Steam Input paddles (default: F12; empty disables)")
+    ap.add_argument("--record-key", default="F11",
+                    help="Keyboard key used to toggle recording, ideal for Steam Input paddles (default: F11; empty disables)")
     ap.add_argument("--language", help="Speech language code, e.g. en or bg (default: auto-detect)")
     ap.add_argument("--model", default="base", help="Whisper model: tiny, base, small, medium, large-v3 (default: base)")
     ap.add_argument("--device", default="auto", help="Whisper device: auto, cpu, cuda")
