@@ -32,7 +32,7 @@ import numpy as np  # noqa: E402
 import pygame  # noqa: E402
 import sounddevice as sd  # noqa: E402
 from pygame._sdl2 import controller as sdl_controller  # noqa: E402
-from pynput.keyboard import Controller as KeyboardController, Key  # noqa: E402
+from pynput.keyboard import Controller as KeyboardController, Key, Listener  # noqa: E402
 
 SAMPLE_RATE = 16_000
 DEFAULT_CLOSE_COMMAND = "/click InputFunctionBindingButton_PAD2 LeftButton 1"
@@ -523,6 +523,8 @@ class Coordinator:
         self._lock = threading.Lock()
         self.channel_modifier_held = False
         self.selected_channel = "general"
+        self.record_key = None
+        self.keyboard_listener = None
 
     def close_command(self) -> str | None:
         choice = self.args.close_command
@@ -557,6 +559,27 @@ class Coordinator:
         if not trigger and self.args.raw_button is None:
             log("No trigger yet. In game: /gps setup, then press a controller button.")
 
+    def _start_record_hotkey(self) -> None:
+        name = (self.args.record_key or "").upper()
+        if not name:
+            return
+        key = SPECIAL_KEYS.get(name)
+        if key is None and len(name) == 1:
+            key = name.lower()
+        if key is None:
+            log(f"Unknown --record-key '{self.args.record_key}'; keyboard recording trigger disabled")
+            return
+        self.record_key = key
+
+        def on_press(pressed):
+            if pressed == self.record_key:
+                self.on_trigger()
+
+        self.keyboard_listener = Listener(on_press=on_press)
+        self.keyboard_listener.daemon = True
+        self.keyboard_listener.start()
+        log(f"Keyboard record trigger: {name}")
+
     def run(self) -> None:
         self.transcriber = Transcriber(self.args.model, self.args.language, self.args.device, self.args.compute_type)
         self.saved.refresh()
@@ -565,7 +588,11 @@ class Coordinator:
                 "Install the addon, run /gps setup in game (it reloads the UI to save).")
         self.apply_settings()
         self.watcher.start()
-        log("Ready. Press the trigger to start recording.")
+        self._start_record_hotkey()
+        if self.record_key is not None:
+            log("Ready. Press the keyboard/Steam Input record trigger to start recording.")
+        else:
+            log("Ready. Press the controller trigger to start recording.")
 
         last_poll = 0.0
         while True:
@@ -702,6 +729,8 @@ def main() -> None:
     ap.add_argument("--wow-dir", default=str(default_wow_dir()), help="WoW flavor directory (the _classic_beta_ folder)")
     ap.add_argument("--button", help="Override the trigger button from the addon, e.g. PADSOCIAL")
     ap.add_argument("--raw-button", type=int, help="Use a raw joystick button index instead of an SDL mapping")
+    ap.add_argument("--record-key", default="F12",
+                    help="Keyboard key used to toggle recording, ideal for Steam Input paddles (default: F12; empty disables)")
     ap.add_argument("--language", help="Speech language code, e.g. en or bg (default: auto-detect)")
     ap.add_argument("--model", default="base", help="Whisper model: tiny, base, small, medium, large-v3 (default: base)")
     ap.add_argument("--device", default="auto", help="Whisper device: auto, cpu, cuda")
