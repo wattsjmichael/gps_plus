@@ -271,7 +271,10 @@ class App:
 
         self.recorder = Recorder(device)
         self.keyboard = Controller()
+        log("Starting ForeverVoice Helper...")
+        log(f"Loading Whisper model '{args.model}' on CPU...")
         self.model = WhisperModel(args.model, device="cpu", compute_type="int8")
+        log("Whisper model loaded")
         self.lock = threading.Lock()
         self.last_toggle = 0.0
         self.settings = ForeverVoiceSettings(Path(args.wow_dir))
