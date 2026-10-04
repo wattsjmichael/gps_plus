@@ -180,8 +180,7 @@ class App:
 
     def run(self):
         bindings = {
-            "start": parse_key(self.args.start_key),
-            "send": parse_key(self.args.send_key),
+            "toggle": parse_key(self.args.toggle_key),
             "general": parse_key(self.args.general_key),
             "trade": parse_key(self.args.trade_key),
             "party": parse_key(self.args.party_key),
@@ -198,18 +197,18 @@ class App:
 
         log("ForeverVoice ready")
         log(f"Mic: {sd.query_devices(self.args.input_device, 'input')['name'] if self.args.input_device is not None else sd.query_devices(kind='input')['name']}")
-        log(f"Start={self.args.start_key} Send={self.args.send_key}")
+        log(f"Voice toggle={self.args.toggle_key}")
         log(
             f"Channels: General={self.args.general_key}, Trade={self.args.trade_key}, "
             f"Party={self.args.party_key}, Guild={self.args.guild_key}, Say={self.args.say_key}"
         )
 
         def on_press(key):
-            if key == bindings["start"]:
-                self.start_recording()
-                return
-            if key == bindings["send"]:
-                self.send_recording()
+            if key == bindings["toggle"]:
+                if self.state == "idle":
+                    self.start_recording()
+                elif self.state == "recording":
+                    self.send_recording()
                 return
             if key in channels:
                 self.select_channel(*channels[key])
@@ -219,8 +218,7 @@ class App:
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--start-key", default="F13")
-    p.add_argument("--send-key", default="F14")
+    p.add_argument("--toggle-key", default="F13")
     p.add_argument("--general-key", default="F15")
     p.add_argument("--trade-key", default="F16")
     p.add_argument("--party-key", default="F17")
@@ -233,7 +231,7 @@ def main():
 
     try:
         for name in (
-            args.start_key, args.send_key, args.general_key, args.trade_key,
+            args.toggle_key, args.general_key, args.trade_key,
             args.party_key, args.guild_key, args.say_key
         ):
             parse_key(name)
