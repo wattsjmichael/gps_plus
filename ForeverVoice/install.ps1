@@ -19,3 +19,21 @@ py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install --quiet .
 Pop-Location
 Write-Host "ForeverVoice installed."
+
+# Install a per-user Startup shortcut so the helper launches automatically
+# at Windows sign-in. This requires no Administrator rights.
+$StartupDir = [Environment]::GetFolderPath("Startup")
+$ShortcutPath = Join-Path $StartupDir "ForeverVoice Helper.lnk"
+$PowerShell = (Get-Command powershell.exe).Source
+$RunHelper = Join-Path $Root "run-helper.ps1"
+
+$Shell = New-Object -ComObject WScript.Shell
+$Shortcut = $Shell.CreateShortcut($ShortcutPath)
+$Shortcut.TargetPath = $PowerShell
+$Shortcut.Arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$RunHelper`""
+$Shortcut.WorkingDirectory = $Root
+$Shortcut.Description = "ForeverVoice speech-to-text helper"
+$Shortcut.Save()
+
+Write-Host "ForeverVoice helper will now start automatically when you sign in to Windows."
+Write-Host "Startup shortcut: $ShortcutPath"
