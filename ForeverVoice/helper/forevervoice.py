@@ -16,10 +16,12 @@ KEYS = {
     "PAGEDOWN": Key.page_down,
     "HOME": Key.home,
     "END": Key.end,
+    "DELETE": Key.delete,
 }
 
 CHANNEL_KEYS = {
     Key.page_up: ("general", "/1 "),
+    Key.delete: ("trade", "/2 "),
     Key.end: ("party", "/p "),
     Key.page_down: ("guild", "/g "),
     Key.home: ("say", "/s "),
@@ -144,7 +146,7 @@ class App:
         log("ForeverVoice ready")
         log(f"Mic: {sd.query_devices(self.args.input_device, 'input')['name'] if self.args.input_device is not None else sd.query_devices(kind='input')['name']}")
         log(f"Record key: {self.args.record_key}")
-        log("Channels: PageUp=General, End=Party, PageDown=Guild, Home=Say")
+        log("Channels: PageUp=General, Delete=Trade, End=Party, PageDown=Guild, Home=Say")
 
         def on_press(key):
             if key == record_key:
@@ -164,7 +166,7 @@ def main():
     p.add_argument("--any-app", action="store_true")
     args = p.parse_args()
     if args.record_key.upper() not in KEYS:
-        raise SystemExit("record key must be INSERT, PAGEUP, PAGEDOWN, HOME, or END")
+        raise SystemExit("record key must be INSERT, PAGEUP, PAGEDOWN, HOME, END, or DELETE")
     App(args).run()
 
 if __name__ == "__main__":
