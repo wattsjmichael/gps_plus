@@ -66,6 +66,11 @@ class AddonSettings:
     trigger: str | None = None
     hotkey: str | None = None
     close_command: str | None = None
+    channel_modifier: str = "PADLTRIGGER"
+    channel_up: str = "general"
+    channel_right: str = "party"
+    channel_down: str = "guild"
+    channel_left: str = "say"
 
 
 class SavedVariables:
@@ -96,8 +101,16 @@ class SavedVariables:
             return False
         self._mtime = mtime
         text = p.read_text(encoding="utf-8", errors="replace")
-        new = AddonSettings(trigger=self._value("trigger", text), hotkey=self._value("hotkey", text),
-                            close_command=self._value("closeCommand", text))
+        new = AddonSettings(
+            trigger=self._value("trigger", text),
+            hotkey=self._value("hotkey", text),
+            close_command=self._value("closeCommand", text),
+            channel_modifier=self._value("channelModifier", text) or "PADLTRIGGER",
+            channel_up=self._value("channelUp", text) or "general",
+            channel_right=self._value("channelRight", text) or "party",
+            channel_down=self._value("channelDown", text) or "guild",
+            channel_left=self._value("channelLeft", text) or "say",
+        )
         changed = new != self.settings
         self.settings = new
         return changed
@@ -161,11 +174,17 @@ PAD_TO_SDL_AXIS = {
 TRIGGER_AXIS_THRESHOLD = 16_000  # of 32767
 
 
+SDL_BUTTON_TO_PAD = {
+    value: pad for pad, name in PAD_TO_SDL_BUTTON.items()
+    if (value := _const(name)) is not None
+}
+
 class ControllerWatcher:
     """Polls SDL on the calling thread (SDL wants the main thread on macOS)."""
 
-    def __init__(self, on_press):
+    def __init__(self, on_press, on_input=None):
         self.on_press = on_press
+        self.on_input = on_input
         self.trigger: str | None = None
         self.raw_button: int | None = None
         self._button_const: int | None = None
@@ -233,11 +252,30 @@ class ControllerWatcher:
                 log("Controller disconnected")
             elif event.type == pygame.JOYDEVICEADDED and self.raw_button is not None:
                 self._open(event.device_index)
-            elif event.type == pygame.CONTROLLERBUTTONDOWN and self._button_const is not None:
-                if event.button == self._button_const:
+            elif event.type == pygame.CONTROLLERBUTTONDOWN:
+                pad = SDL_BUTTON_TO_PAD.get(event.button)
+                if pad and self.on_input:
+                    self.on_input(pad, True)
+                if self._button_const is not None and event.button == self._button_const:
                     self._fire()
-            elif event.type == pygame.CONTROLLERAXISMOTION and self._axis_const is not None:
-                if event.axis == self._axis_const:
+            elif event.type == pygame.CONTROLLERBUTTONUP:
+                pad = SDL_BUTTON_TO_PAD.get(event.button)
+                if pad and self.on_input:
+                    self.on_input(pad, False)
+            elif event.type == pygame.CONTROLLERAXISMOTION:
+                # Report both trigger axes as virtual PAD button presses so they
+                # can be used as the configurable channel-wheel modifier.
+                for pad, axis_name in PAD_TO_SDL_AXIS.items():
+                    axis_const = _const(axis_name)
+                    if axis_const is not None and event.axis == axis_const:
+                        pressed = event.value > TRIGGER_AXIS_THRESHOLD
+                        attr = f"_virtual_{pad}"
+                        previous = getattr(self, attr, False)
+                        if pressed != previous:
+                            setattr(self, attr, pressed)
+                            if self.on_input:
+                                self.on_input(pad, pressed)
+                if self._axis_const is not None and event.axis == self._axis_const:
                     pressed = event.value > TRIGGER_AXIS_THRESHOLD
                     if pressed and not self._axis_active:
                         self._fire()
@@ -473,7 +511,7 @@ class Coordinator:
     def __init__(self, args):
         self.args = args
         self.saved = SavedVariables(Path(args.wow_dir))
-        self.watcher = ControllerWatcher(self.on_trigger)
+        self.watcher = ControllerWatcher(self.on_trigger, self.on_controller_input)
         self.recorder = Recorder(device=args.input_device)
         self.injector = Injector()
         self.sounds = Sounds(not args.silent)
@@ -483,6 +521,8 @@ class Coordinator:
         self.state = self.IDLE
         self.record_start = 0.0
         self._lock = threading.Lock()
+        self.channel_modifier_held = False
+        self.selected_channel = "general"
 
     def close_command(self) -> str | None:
         choice = self.args.close_command
@@ -541,6 +581,25 @@ class Coordinator:
                 self.end_recording()
             time.sleep(0.01)
 
+    def on_controller_input(self, button: str, pressed: bool) -> None:
+        settings = self.saved.settings
+        modifier = settings.channel_modifier or "PADLTRIGGER"
+        if button == modifier:
+            self.channel_modifier_held = pressed
+            return
+        if not pressed or not self.channel_modifier_held:
+            return
+        direction_map = {
+            "PADDUP": settings.channel_up,
+            "PADDRIGHT": settings.channel_right,
+            "PADDDOWN": settings.channel_down,
+            "PADDLEFT": settings.channel_left,
+        }
+        channel = direction_map.get(button)
+        if channel:
+            self.selected_channel = channel
+            log(f"Voice channel: {channel}")
+
     def on_trigger(self) -> None:
         with self._lock:
             if self.state == self.IDLE:
@@ -590,7 +649,18 @@ class Coordinator:
                 log(f"WoW is not the frontmost app ({frontmost_app_name()}); not typing")
                 self.sounds.play(self.sounds.error_tone)
                 return
-            self.injector.deliver(text, self.hotkey, self.close_key, self.close_command())
+            prefixes = {
+                "general": "/1 ",
+                "party": "/p ",
+                "guild": "/g ",
+                "say": "/s ",
+                "raid": "/raid ",
+                "instance": "/i ",
+                "trade": "/2 ",
+                "reply": "/r ",
+            }
+            prefix = prefixes.get(self.selected_channel, "/1 ")
+            self.injector.deliver(prefix + text, self.hotkey, self.close_key, self.close_command())
             log("Sent")
         finally:
             self.state = self.IDLE
