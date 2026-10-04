@@ -64,6 +64,32 @@ end
 local state = "idle"          -- idle | recording | awaiting
 local capturing = false
 local stateTimer
+local channelModifierHeld = false
+local selectedChannel = "general"
+
+local CHANNEL_DEFAULTS = {
+	channelModifier = "PADLTRIGGER",
+	channelUp = "general",
+	channelRight = "party",
+	channelDown = "guild",
+	channelLeft = "say",
+}
+
+local CHANNELS = {
+	general = { label = "GENERAL /1", command = "/1" },
+	party = { label = "PARTY /p", command = "/p" },
+	guild = { label = "GUILD /g", command = "/g" },
+	say = { label = "SAY /s", command = "/s" },
+	raid = { label = "RAID /raid", command = "/raid" },
+	instance = { label = "INSTANCE /i", command = "/i" },
+	trade = { label = "TRADE /2", command = "/2" },
+	reply = { label = "REPLY /r", command = "/r" },
+}
+
+local function ChannelLabel()
+	local c = CHANNELS[selectedChannel] or CHANNELS.general
+	return c.label
+end
 
 local indicator = CreateFrame("Frame", "GamepadSpeakIndicator", UIParent)
 indicator:SetSize(260, 30)
@@ -75,6 +101,30 @@ indicator.bg:SetColorTexture(0, 0, 0, 0.55)
 indicator.text = indicator:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
 indicator.text:SetPoint("CENTER")
 indicator:Hide()
+
+local channelIndicator = CreateFrame("Frame", "GamepadSpeakChannelIndicator", UIParent)
+channelIndicator:SetSize(360, 38)
+channelIndicator:SetPoint("TOP", indicator, "BOTTOM", 0, -6)
+channelIndicator:SetFrameStrata("HIGH")
+channelIndicator.bg = channelIndicator:CreateTexture(nil, "BACKGROUND")
+channelIndicator.bg:SetAllPoints()
+channelIndicator.bg:SetColorTexture(0, 0, 0, 0.55)
+channelIndicator.text = channelIndicator:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+channelIndicator.text:SetPoint("CENTER")
+channelIndicator:Hide()
+
+local channelHideTimer
+local function ShowChannelIndicator(seconds)
+	if channelHideTimer then channelHideTimer:Cancel(); channelHideTimer = nil end
+	channelIndicator.text:SetText("|cff69ccf0LT + D-pad|r  " .. ChannelLabel())
+	channelIndicator:Show()
+	if seconds then
+		channelHideTimer = C_Timer.NewTimer(seconds, function()
+			channelHideTimer = nil
+			if state == "idle" then channelIndicator:Hide() end
+		end)
+	end
+end
 
 local function CancelStateTimer()
 	if stateTimer then stateTimer:Cancel(); stateTimer = nil end
@@ -92,6 +142,12 @@ local function SetState(newState, timeout, onTimeout)
 	else
 		indicator:Hide()
 	end
+	if newState == "recording" or newState == "awaiting" then
+		ShowChannelIndicator()
+	elseif newState == "idle" then
+		if channelHideTimer then channelHideTimer:Cancel(); channelHideTimer = nil end
+		channelIndicator:Hide()
+	end
 	if timeout then
 		stateTimer = C_Timer.NewTimer(timeout, function()
 			stateTimer = nil
@@ -108,7 +164,7 @@ end
 ------------------------------------------------------------------------
 local MACRO_NAME = "GPSpeak"
 local MACRO_ICON = 134400 -- INV_Misc_QuestionMark
-local PERSISTED_KEYS = { "trigger", "chatType", "openOnPress" }
+local PERSISTED_KEYS = { "trigger", "chatType", "openOnPress", "channelModifier", "channelUp", "channelRight", "channelDown", "channelLeft" }
 local macroDirty = false
 
 local function Serialize(db)
@@ -328,6 +384,21 @@ local function ApplyObserverMode()
 	return true
 end
 
+local function SelectChannel(channel)
+	if not CHANNELS[channel] then return end
+	selectedChannel = channel
+	ShowChannelIndicator(state == "idle" and 1.5 or nil)
+end
+
+local function ChannelForDirection(button)
+	local db = GetDB()
+	if button == "PADDUP" then return db.channelUp
+	elseif button == "PADDRIGHT" then return db.channelRight
+	elseif button == "PADDDOWN" then return db.channelDown
+	elseif button == "PADDLEFT" then return db.channelLeft
+	end
+end
+
 local function OnTriggerPressed()
 	if state == "idle" then
 		SetState("recording", RECORD_TIMEOUT, function() SetState("idle") end)
@@ -368,8 +439,28 @@ observer:SetScript("OnGamePadButtonDown", function(_, button)
 		FinishCapture(button)
 		return
 	end
-	if DB and DB.trigger and button == DB.trigger then
+
+	local db = GetDB()
+	if button == db.channelModifier then
+		channelModifierHeld = true
+		return
+	end
+	if channelModifierHeld then
+		local channel = ChannelForDirection(button)
+		if channel then
+			SelectChannel(channel)
+			return
+		end
+	end
+	if db.trigger and button == db.trigger then
 		OnTriggerPressed()
+	end
+end)
+
+observer:SetScript("OnGamePadButtonUp", function(_, button)
+	local db = GetDB()
+	if button == db.channelModifier then
+		channelModifierHeld = false
 	end
 end)
 
@@ -420,6 +511,26 @@ end
 ------------------------------------------------------------------------
 local CHAT_TYPES = { say = "SAY", yell = "YELL", party = "PARTY", raid = "RAID", guild = "GUILD", officer = "OFFICER", instance = "INSTANCE_CHAT", sticky = nil }
 
+local function SetChannelBinding(slot, value)
+	local db = GetDB()
+	if slot == "modifier" then
+		db.channelModifier = value:upper()
+		SaveToMacro()
+		msg("Channel modifier: " .. db.channelModifier .. ". Type /reload so the helper picks it up.")
+		return true
+	end
+	local key = "channel" .. slot:sub(1,1):upper() .. slot:sub(2):lower()
+	value = value:lower()
+	if not CHANNELS[value] then
+		msg("Unknown channel '" .. value .. "'. Use general|party|guild|say|raid|instance|trade|reply.")
+		return false
+	end
+	db[key] = value
+	SaveToMacro()
+	msg(slot .. " = " .. CHANNELS[value].label .. ". Type /reload so the helper picks it up.")
+	return true
+end
+
 local function ShowStatus()
 	local DB = GetDB()
 	local index = GetMacroIndexByName(MACRO_NAME)
@@ -427,6 +538,9 @@ local function ShowStatus()
 	msg("Trigger: " .. (DB.trigger and ButtonLabel(DB.trigger) or "|cffff5050not set|r (run /gps setup)"))
 	msg("Helper hotkey: " .. (DB.hotkey or "|cffff5050none|r"))
 	msg("Channel: " .. (DB.chatType or "last used (sticky)"))
+	msg("Voice channel wheel: modifier=" .. tostring(DB.channelModifier)
+		.. " up=" .. tostring(DB.channelUp) .. " right=" .. tostring(DB.channelRight)
+		.. " down=" .. tostring(DB.channelDown) .. " left=" .. tostring(DB.channelLeft))
 	msg("Close command: " .. ComputeCloseCommand() .. " (PAD2 is bound to '" .. tostring(GetBindingAction("PAD2")) .. "')")
 	msg("Open chat on second press: " .. (DB.openOnPress and "on" or "off") .. " (off = helper opens it with Enter)")
 	msg("Using gamepad now: " .. tostring(IsUsingGamepad and IsUsingGamepad() or false)
@@ -464,6 +578,14 @@ local function SlashHandler(input)
 		else
 			msg("Unknown channel '" .. rest .. "'.")
 		end
+	elseif cmd == "dpad" then
+		local slot, value = rest:match("^(%S+)%s+(%S+)$")
+		slot = slot and slot:lower()
+		if not slot or not value or not ({ modifier=true, up=true, right=true, down=true, left=true })[slot] then
+			msg("Usage: /gps dpad modifier PADLTRIGGER  OR  /gps dpad up|right|down|left general|party|guild|say|raid|instance|trade|reply")
+		else
+			SetChannelBinding(slot, value)
+		end
 	elseif cmd == "open" then
 		DB.openOnPress = (rest:lower() == "on") or nil
 		SaveToMacro()
@@ -485,6 +607,8 @@ local function SlashHandler(input)
 		msg("  /gps status  - show current settings")
 		msg("  /gps test [text] - send text through the same path the helper uses")
 		msg("  /gps channel <say|party|raid|guild|officer|instance|sticky>")
+		msg("  /gps dpad modifier PADLTRIGGER")
+		msg("  /gps dpad up|right|down|left general|party|guild|say|raid|instance|trade|reply")
 		msg("  /gps open <on|off> - addon opens chat on the second press (default off; helper uses Enter)")
 		msg("  /gps hotkey  - re-read the helper hotkey from your key bindings")
 		msg("  /gps api     - show which chat functions this client has (for debugging)")
@@ -510,6 +634,10 @@ events:RegisterEvent("UPDATE_MACROS")
 local function Init()
 	local db = GetDB()
 	RestoreFromMacro()
+	for key, value in pairs(CHANNEL_DEFAULTS) do
+		if db[key] == nil then db[key] = value end
+	end
+	selectedChannel = db.channelUp or "general"
 	ApplyObserverMode()
 	db.closeCommand = ComputeCloseCommand()
 	EnsureHotkey()
