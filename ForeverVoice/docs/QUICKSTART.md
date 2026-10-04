@@ -1,56 +1,48 @@
 # ForeverVoice — 2-minute setup
 
-ForeverVoice gives WoW Forever controller players local speech-to-text chat.
+## 1. Run ForeverVoice Setup
 
-## 1. Install
+Download and double-click:
 
-1. Extract the release ZIP.
-2. Run `install.ps1` with PowerShell.
-3. Pick your microphone when the helper setup window opens.
-4. Start WoW Forever.
-5. Type `/reload`.
+`ForeverVoiceSetup-v0.3.0.exe`
 
-## 2. Configure the controller
+The setup app automatically:
 
-Type:
+- finds WoW Forever
+- detects an Xbox/XInput controller
+- lets you choose your microphone
+- installs the WoW addon
+- installs ForeverVoice Helper under your Windows profile
+- enables Windows autostart
+- starts the helper
+
+No Python, PowerShell, or manual addon copying is required.
+
+## 2. Configure it in WoW
+
+Start WoW Forever and type:
+
+`/reload`
+
+Then:
 
 `/fv setup`
 
-Choose:
+Choose your Start / Send button, Channel Select modifier, and four channel slots.
 
-- **Voice Start / Send** — press once to start recording and again to send.
-- **Channel Select modifier** — normally Left Trigger.
-- Four channel slots for Modifier + D-pad.
-
-Recommended default:
+Recommended layout:
 
 - LT + Up → General
 - LT + Right → Trade
 - LT + Down → Reply to last whisper
 - LT + Left → Party
 
-Any slot can be changed to Off, Guild, Say, Raid, Instance, or another joined numbered channel.
+## 3. Talk
 
-## 3. Use it
+Press Start / Send once to begin recording.
 
-Press your Voice button once. The red HUD means ForeverVoice is recording.
+While recording, hold the Channel Select modifier and press a D-pad direction. Press Start / Send again to transcribe and send.
 
-While recording, hold your Channel Select modifier and press a D-pad direction. The HUD badge changes to show the destination. Press the Voice button again to transcribe and send.
+ForeverVoice temporarily suppresses normal D-pad gameplay bindings while recording so choosing a channel does not fire an ability.
 
-During recording, ForeverVoice temporarily suppresses the D-pad gameplay bindings so selecting a channel does not cast abilities. Normal controller behavior returns after sending.
-
-## Helper
-
-The Windows helper starts automatically when you sign in. Speech is transcribed locally on your PC.
-
-To change microphones later, run:
-
-`ForeverVoiceHelper.exe --setup`
-
-In-game commands:
-
-- `/fv setup` — controller and channel setup
-- `/fv slots` — show current channel slots
-- `/fv move` — move the HUD
-- `/fv hide` — hide HUD preview
-- `/fv reset` — reset HUD position
+Speech transcription runs locally on your PC.
