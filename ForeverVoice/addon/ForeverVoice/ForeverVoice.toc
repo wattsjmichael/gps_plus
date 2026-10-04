@@ -1,0 +1,7 @@
+## Interface: 16001
+## Title: ForeverVoice
+## Notes: Speech-to-text chat HUD for WoW Forever
+## Author: Michael Watts
+## Version: 0.1.0
+
+ForeverVoice.lua
