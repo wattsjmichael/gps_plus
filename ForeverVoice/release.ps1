@@ -1,6 +1,6 @@
 $ErrorActionPreference = "Stop"
 $Root = $PSScriptRoot
-$Version = "0.3.0"
+$Version = "0.3.1"
 $ReleaseRoot = Join-Path $Root "release"
 $SetupSource = Join-Path $Root "installer\dist\ForeverVoiceSetup.exe"
 $SetupRelease = Join-Path $ReleaseRoot ("ForeverVoiceSetup-v" + $Version + ".exe")
