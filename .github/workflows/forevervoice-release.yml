@@ -1,0 +1,52 @@
+name: ForeverVoice Windows Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "forevervoice-v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: ForeverVoice
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build one-click Setup EXE
+        shell: powershell
+        run: .\build-setup.ps1
+
+      - name: Prepare release files
+        shell: powershell
+        run: .\release.ps1
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ForeverVoiceSetup-v0.3.0
+          path: |
+            ForeverVoice/release/ForeverVoiceSetup-v0.3.0.exe
+            ForeverVoice/release/ForeverVoiceSetup-v0.3.0-SHA256.txt
+
+      - name: Publish GitHub release for tag
+        if: startsWith(github.ref, 'refs/tags/forevervoice-v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ForeverVoice v0.3.0
+          body_path: ForeverVoice/CHANGELOG.md
+          files: |
+            ForeverVoice/release/ForeverVoiceSetup-v0.3.0.exe
+            ForeverVoice/release/ForeverVoiceSetup-v0.3.0-SHA256.txt

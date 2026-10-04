@@ -1,0 +1,80 @@
+name: ForeverVoice beta bug report
+description: Report a problem with ForeverVoice Setup, helper, controller input, channels, or transcription.
+title: "[ForeverVoice Beta] "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for testing ForeverVoice. Please fill out the details below so the bug can be reproduced.
+
+  - type: input
+    id: version
+    attributes:
+      label: ForeverVoice version
+      placeholder: "0.3.0"
+    validations:
+      required: true
+
+  - type: input
+    id: controller
+    attributes:
+      label: Controller
+      placeholder: "Xbox Elite Series 2"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: wow-found
+    attributes:
+      label: Did Setup find WoW automatically?
+      options:
+        - "Yes"
+        - "No"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: mic
+    attributes:
+      label: Did microphone setup work?
+      options:
+        - "Yes"
+        - "No"
+        - "Not tested"
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Tell us what you expected and what actually happened.
+    validations:
+      required: true
+
+  - type: textarea
+    id: helper-log
+    attributes:
+      label: Helper output / error
+      description: Paste any relevant ForeverVoice Helper log or error text.
+      render: shell
+
+  - type: dropdown
+    id: ability-fired
+    attributes:
+      label: Did LT + D-pad fire a gameplay ability while recording?
+      options:
+        - "No"
+        - "Yes"
+        - "Not applicable / not tested"
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Start recording
+        2. Hold LT
+        3. Press D-pad Right
+        4. ...
