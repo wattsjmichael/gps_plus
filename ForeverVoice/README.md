@@ -6,7 +6,7 @@ Controller-first local speech-to-text chat for WoW Forever.
 
 Public users should download and run:
 
-`ForeverVoiceSetup-v0.3.0.exe`
+`ForeverVoiceSetup-v0.3.1.exe`
 
 The Setup app:
 
@@ -45,8 +45,8 @@ Prepare the versioned release artifact and SHA256:
 
 Output:
 
-- `release/ForeverVoiceSetup-v0.3.0.exe`
-- `release/ForeverVoiceSetup-v0.3.0-SHA256.txt`
+- `release/ForeverVoiceSetup-v0.3.1.exe`
+- `release/ForeverVoiceSetup-v0.3.1-SHA256.txt`
 
 The legacy `install.ps1` and `run-helper.ps1` scripts remain available for development only.
 
@@ -57,3 +57,14 @@ The helper owns microphone capture, Whisper transcription, XInput input, and the
 The addon owns onboarding, HUD presentation, SavedVariables, and temporary WoW-side D-pad suppression while recording.
 
 Speech transcription is local to the PC.
+
+
+## Uninstall
+
+ForeverVoice registers itself with Windows. Remove it from:
+
+**Settings → Apps → Installed apps → ForeverVoice → Uninstall**
+
+You can also reopen `ForeverVoiceSetup.exe` and click **Uninstall ForeverVoice**.
+
+Uninstall removes the helper, saved microphone settings, Windows Startup entry, and the WoW addon folder.
