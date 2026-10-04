@@ -14,7 +14,7 @@ import winreg
 import sounddevice as sd
 
 APP_NAME = "ForeverVoice"
-APP_VERSION = "0.3.0"
+APP_VERSION = "0.3.1"
 UNINSTALL_KEY = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\ForeverVoice"
 
 WOW_CANDIDATES = [
