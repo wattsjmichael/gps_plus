@@ -13,7 +13,7 @@ https://github.com/wattsjmichael/gps_plus/releases/latest
 
 Download:
 
-`ForeverVoiceSetup-v0.3.0.exe`
+`ForeverVoiceSetup-v0.3.1.exe`
 
 Run it once. The setup app:
 
@@ -98,6 +98,10 @@ ForeverVoice is open source.
 
 Each public Windows release includes a SHA256 checksum for the Setup EXE so testers can verify they downloaded the same file that was published.
 
+## Uninstall
+
+ForeverVoice appears in **Windows Settings → Apps → Installed apps**. Choose **ForeverVoice → Uninstall** to remove the helper, saved settings, Startup entry, and WoW addon. You can also reopen ForeverVoice Setup and click **Uninstall ForeverVoice**.
+
 ## Development
 
 ForeverVoice lives in the `ForeverVoice/` directory.
@@ -118,4 +122,4 @@ Known-good controller snapshot:
 
 ## Status
 
-ForeverVoice v0.3 is currently in beta testing.
+ForeverVoice v0.3.1 is currently in beta testing.
