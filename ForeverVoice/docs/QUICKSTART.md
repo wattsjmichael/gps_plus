@@ -4,7 +4,7 @@
 
 Download and double-click:
 
-`ForeverVoiceSetup-v0.3.0.exe`
+`ForeverVoiceSetup-v0.3.1.exe`
 
 The setup app automatically:
 
@@ -46,3 +46,12 @@ While recording, hold the Channel Select modifier and press a D-pad direction. P
 ForeverVoice temporarily suppresses normal D-pad gameplay bindings while recording so choosing a channel does not fire an ability.
 
 Speech transcription runs locally on your PC.
+
+
+## Uninstall
+
+Open **Windows Settings → Apps → Installed apps**, find **ForeverVoice**, and choose **Uninstall**.
+
+You can also reopen ForeverVoice Setup and click **Uninstall ForeverVoice**.
+
+The uninstaller removes the local helper, microphone/config settings, Windows Startup entry, and the WoW addon.
