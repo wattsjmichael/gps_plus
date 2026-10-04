@@ -1,6 +1,7 @@
 from __future__ import annotations
 import argparse
 import ctypes
+import json
 import platform
 import re
 import threading
@@ -15,12 +16,15 @@ from pynput.keyboard import Controller, Key
 SYSTEM = platform.system()
 SAMPLE_RATE = 16000
 
-CHANNEL_PREFIXES = {
+KNOWN_PREFIXES = {
     "general": "/1 ",
     "trade": "/2 ",
     "party": "/p ",
     "guild": "/g ",
     "say": "/s ",
+    "reply": "/r ",
+    "raid": "/raid ",
+    "instance": "/i ",
 }
 
 DEFAULT_CONTROLLER = {
@@ -32,7 +36,7 @@ DEFAULT_CONTROLLER = {
     "left_button": "PADDLEFT",
     "up_channel": "general",
     "right_channel": "trade",
-    "down_channel": "guild",
+    "down_channel": "reply",
     "left_channel": "party",
 }
 
@@ -50,6 +54,29 @@ def default_wow_dir() -> Path:
             return p
     return candidates[0]
 
+def appdata_dir() -> Path:
+    if SYSTEM == "Windows":
+        base = Path.home() / "AppData" / "Roaming"
+    else:
+        base = Path.home() / ".config"
+    p = base / "ForeverVoice"
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+def load_local_config() -> dict:
+    p = appdata_dir() / "config.json"
+    if not p.exists():
+        return {}
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+def save_local_config(data: dict):
+    (appdata_dir() / "config.json").write_text(
+        json.dumps(data, indent=2), encoding="utf-8"
+    )
+
 def frontmost_app_name():
     if SYSTEM == "Windows":
         try:
@@ -66,6 +93,16 @@ def frontmost_app_name():
 def wow_frontmost():
     n = (frontmost_app_name() or "").lower()
     return "warcraft" in n or n.startswith("wow")
+
+def channel_prefix(name: str | None):
+    if not name or name == "off":
+        return None
+    if name in KNOWN_PREFIXES:
+        return KNOWN_PREFIXES[name]
+    m = re.fullmatch(r"channel:(\d+)", name)
+    if m:
+        return f"/{m.group(1)} "
+    return None
 
 class ForeverVoiceSettings:
     def __init__(self, wow_dir: Path):
@@ -134,12 +171,8 @@ class Recorder:
     def start(self):
         self.chunks = []
         self.stream = sd.InputStream(
-            samplerate=SAMPLE_RATE,
-            channels=1,
-            dtype="float32",
-            blocksize=1024,
-            device=self.device,
-            callback=self._cb,
+            samplerate=SAMPLE_RATE, channels=1, dtype="float32",
+            blocksize=1024, device=self.device, callback=self._cb,
         )
         self.stream.start()
 
@@ -154,38 +187,21 @@ class Recorder:
         return out
 
 XINPUT_BITS = {
-    "PADDUP": 0x0001,
-    "PADDDOWN": 0x0002,
-    "PADDLEFT": 0x0004,
-    "PADDRIGHT": 0x0008,
-    "PADFORWARD": 0x0010,
-    "PADSOCIAL": 0x0020,
-    "PADLSTICK": 0x0040,
-    "PADRSTICK": 0x0080,
-    "PADLSHOULDER": 0x0100,
-    "PADRSHOULDER": 0x0200,
-    "PAD1": 0x1000,
-    "PAD2": 0x2000,
-    "PAD3": 0x4000,
-    "PAD4": 0x8000,
+    "PADDUP": 0x0001, "PADDDOWN": 0x0002, "PADDLEFT": 0x0004, "PADDRIGHT": 0x0008,
+    "PADFORWARD": 0x0010, "PADSOCIAL": 0x0020, "PADLSTICK": 0x0040, "PADRSTICK": 0x0080,
+    "PADLSHOULDER": 0x0100, "PADRSHOULDER": 0x0200,
+    "PAD1": 0x1000, "PAD2": 0x2000, "PAD3": 0x4000, "PAD4": 0x8000,
 }
 
 class XINPUT_GAMEPAD(ctypes.Structure):
     _fields_ = [
-        ("wButtons", ctypes.c_ushort),
-        ("bLeftTrigger", ctypes.c_ubyte),
-        ("bRightTrigger", ctypes.c_ubyte),
-        ("sThumbLX", ctypes.c_short),
-        ("sThumbLY", ctypes.c_short),
-        ("sThumbRX", ctypes.c_short),
-        ("sThumbRY", ctypes.c_short),
+        ("wButtons", ctypes.c_ushort), ("bLeftTrigger", ctypes.c_ubyte),
+        ("bRightTrigger", ctypes.c_ubyte), ("sThumbLX", ctypes.c_short),
+        ("sThumbLY", ctypes.c_short), ("sThumbRX", ctypes.c_short), ("sThumbRY", ctypes.c_short),
     ]
 
 class XINPUT_STATE(ctypes.Structure):
-    _fields_ = [
-        ("dwPacketNumber", ctypes.c_ulong),
-        ("Gamepad", XINPUT_GAMEPAD),
-    ]
+    _fields_ = [("dwPacketNumber", ctypes.c_ulong), ("Gamepad", XINPUT_GAMEPAD)]
 
 class XInputWatcher:
     def __init__(self, app):
@@ -223,7 +239,6 @@ class XInputWatcher:
             current = self.controls()
             downs = current - self.previous
             self.previous = current
-
             modifier = self.app.settings.controller["modifier"]
             modifier_held = modifier in current
 
@@ -232,8 +247,12 @@ class XInputWatcher:
 
             if self.app.settings.refresh():
                 c = self.app.settings.controller
-                log(f"Controller mapping updated: voice={c['toggle']} modifier={c['modifier']}")
-
+                log(
+                    "Controller mapping updated: "
+                    f"voice={c['toggle']} modifier={c['modifier']} "
+                    f"slots=[{c['up_channel']}, {c['right_channel']}, "
+                    f"{c['down_channel']}, {c['left_channel']}]"
+                )
             time.sleep(0.01)
 
 class App:
@@ -244,7 +263,13 @@ class App:
         self.prefix = "/1 "
         self.active_channel = None
         self.active_prefix = None
-        self.recorder = Recorder(args.input_device)
+
+        local = load_local_config()
+        device = args.input_device
+        if device is None and isinstance(local.get("input_device"), int):
+            device = local["input_device"]
+
+        self.recorder = Recorder(device)
         self.keyboard = Controller()
         self.model = WhisperModel(args.model, device="cpu", compute_type="int8")
         self.lock = threading.Lock()
@@ -253,18 +278,24 @@ class App:
         self.settings.refresh()
 
     def bridge_signal(self, state, channel=None):
-        # Use ordinary WoW-visible keys with an obscure modifier chord.
-        # Ctrl+Alt+Shift+F5..F11 are reserved for the HUD bridge only.
+        # Ctrl+Alt+Shift + ordinary keys are consumed by the addon.
         signals = {
             ("recording", "general"): Key.f5,
             ("recording", "trade"): Key.f6,
             ("recording", "party"): Key.f7,
             ("recording", "guild"): Key.f8,
             ("recording", "say"): Key.f9,
-            ("transcribing", None): Key.f10,
-            ("idle", None): Key.f11,
+            ("recording", "reply"): Key.f10,
+            ("recording", "raid"): Key.f11,
+            ("recording", "instance"): Key.f12,
+            ("recording", "custom"): Key.home,
+            ("transcribing", None): Key.end,
+            ("idle", None): Key.page_down,
         }
-        final = signals.get((state, channel)) or signals.get((state, None))
+        bridge_channel = channel
+        if channel and channel.startswith("channel:"):
+            bridge_channel = "custom"
+        final = signals.get((state, bridge_channel)) or signals.get((state, None))
         if final is None:
             return
         try:
@@ -291,7 +322,6 @@ class App:
             except Exception as e:
                 log(f"Mic failed: {e}")
                 return
-
             self.active_channel = self.channel
             self.active_prefix = self.prefix
             self.state = "recording"
@@ -311,64 +341,53 @@ class App:
             threading.Thread(target=self.finish, args=(audio,), daemon=True).start()
 
     def select_channel(self, name):
-        prefix = CHANNEL_PREFIXES.get(name)
-        if not prefix:
+        prefix = channel_prefix(name)
+        if prefix is None:
+            if name != "off":
+                log(f"Unsupported channel slot: {name}")
             return
-        self.channel = name
-        self.prefix = prefix
+        self.channel, self.prefix = name, prefix
         if self.state == "recording":
-            self.active_channel = name
-            self.active_prefix = prefix
+            self.active_channel, self.active_prefix = name, prefix
             log(f"Recording destination changed: {name} ({prefix.strip()})")
             self.bridge_signal("recording", name)
 
     def on_controller_press(self, button, modifier_held):
         c = self.settings.controller
-
         if self.state == "idle":
             if button == c["toggle"] and not modifier_held:
                 self.start_recording()
             return
-
         if self.state != "recording":
             return
-
         if modifier_held:
-            channel_buttons = {
+            slots = {
                 c["up_button"]: c["up_channel"],
                 c["right_button"]: c["right_channel"],
                 c["down_button"]: c["down_channel"],
                 c["left_button"]: c["left_channel"],
             }
-            channel = channel_buttons.get(button)
-            if channel:
-                self.select_channel(channel)
+            choice = slots.get(button)
+            if choice and choice != "off":
+                self.select_channel(choice)
             return
-
         if button == c["toggle"]:
             self.send_recording()
 
     def finish(self, audio):
         try:
             segs, _ = self.model.transcribe(
-                audio,
-                beam_size=1,
-                best_of=1,
-                vad_filter=True,
-                condition_on_previous_text=False,
-                without_timestamps=True,
+                audio, beam_size=1, best_of=1, vad_filter=True,
+                condition_on_previous_text=False, without_timestamps=True,
             )
             text = re.sub(r"\s+", " ", " ".join(s.text.strip() for s in segs)).strip()
             if not text:
                 log("Nothing transcribed")
                 return
-
             log(f"Transcript: {text}")
-
             if not wow_frontmost() and not self.args.any_app:
                 log(f"WoW is not frontmost ({frontmost_app_name()}); not typing")
                 return
-
             outgoing = (self.active_prefix or self.prefix) + text
             log(f"Sending: {outgoing}")
             self.deliver(outgoing)
@@ -388,36 +407,67 @@ class App:
             time.sleep(0.002)
 
     def deliver(self, text):
-        self.keyboard.press(Key.enter)
-        self.keyboard.release(Key.enter)
+        self.keyboard.press(Key.enter); self.keyboard.release(Key.enter)
         time.sleep(0.12)
-
         self.type_text(text)
         time.sleep(0.04)
-
-        self.keyboard.press(Key.enter)
-        self.keyboard.release(Key.enter)
-
+        self.keyboard.press(Key.enter); self.keyboard.release(Key.enter)
         time.sleep(0.15)
-        close_command = "/click InputFunctionBindingButton_PAD2 LeftButton 1"
-        self.type_text(close_command)
+        self.type_text("/click InputFunctionBindingButton_PAD2 LeftButton 1")
         time.sleep(0.03)
-
-        self.keyboard.press(Key.enter)
-        self.keyboard.release(Key.enter)
+        self.keyboard.press(Key.enter); self.keyboard.release(Key.enter)
 
     def run(self):
         c = self.settings.controller
         log("ForeverVoice ready")
-        mic = sd.query_devices(self.args.input_device, "input")["name"] if self.args.input_device is not None else sd.query_devices(kind="input")["name"]
+        mic = sd.query_devices(self.recorder.device, "input")["name"] if self.recorder.device is not None else sd.query_devices(kind="input")["name"]
         log(f"Mic: {mic}")
-        log(f"Controller: voice={c['toggle']} modifier={c['modifier']}")
-
+        log(
+            f"Controller: voice={c['toggle']} modifier={c['modifier']} "
+            f"slots=[{c['up_channel']}, {c['right_channel']}, "
+            f"{c['down_channel']}, {c['left_channel']}]"
+        )
         watcher = XInputWatcher(self)
         threading.Thread(target=watcher.run, daemon=True).start()
-
         while True:
             time.sleep(1.0)
+
+def setup_mic():
+    import tkinter as tk
+    from tkinter import ttk, messagebox
+
+    devices = []
+    for i, dev in enumerate(sd.query_devices()):
+        if int(dev.get("max_input_channels", 0)) > 0:
+            devices.append((i, dev["name"]))
+
+    root = tk.Tk()
+    root.title("ForeverVoice Setup")
+    root.geometry("540x210")
+    root.resizable(False, False)
+
+    ttk.Label(root, text="ForeverVoice", font=("Segoe UI", 16, "bold")).pack(pady=(18, 4))
+    ttk.Label(root, text="Choose the microphone ForeverVoice should use.").pack(pady=(0, 12))
+
+    values = [f"{i}: {name}" for i, name in devices]
+    combo = ttk.Combobox(root, values=values, state="readonly", width=65)
+    combo.pack()
+    if values:
+        combo.current(0)
+
+    def save():
+        if combo.current() < 0:
+            messagebox.showerror("ForeverVoice", "Choose a microphone first.")
+            return
+        idx = devices[combo.current()][0]
+        cfg = load_local_config()
+        cfg["input_device"] = idx
+        save_local_config(cfg)
+        messagebox.showinfo("ForeverVoice", "Microphone saved. Restart ForeverVoice Helper.")
+        root.destroy()
+
+    ttk.Button(root, text="Save microphone", command=save).pack(pady=18)
+    root.mainloop()
 
 def main():
     p = argparse.ArgumentParser()
@@ -425,7 +475,16 @@ def main():
     p.add_argument("--input-device", type=int)
     p.add_argument("--model", default="base")
     p.add_argument("--any-app", action="store_true")
+    p.add_argument("--setup", action="store_true")
+    p.add_argument("--list-devices", action="store_true")
     args = p.parse_args()
+
+    if args.list_devices:
+        print(sd.query_devices())
+        return
+    if args.setup:
+        setup_mic()
+        return
     App(args).run()
 
 if __name__ == "__main__":
