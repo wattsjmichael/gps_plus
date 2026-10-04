@@ -132,6 +132,62 @@ local function applyVisualState()
   end
 end
 
+-- Recording-only controller swallow layer -----------------------------------
+-- While the helper is recording, reserve the configured modifier+D-pad chords
+-- so WoW does not also execute their normal gameplay bindings.
+local overrideOwner = CreateFrame("Frame", "ForeverVoiceOverrideOwner", UIParent)
+local swallowUp = CreateFrame("Button", "ForeverVoiceSwallowUp", UIParent, "SecureActionButtonTemplate")
+local swallowRight = CreateFrame("Button", "ForeverVoiceSwallowRight", UIParent, "SecureActionButtonTemplate")
+local swallowDown = CreateFrame("Button", "ForeverVoiceSwallowDown", UIParent, "SecureActionButtonTemplate")
+local swallowLeft = CreateFrame("Button", "ForeverVoiceSwallowLeft", UIParent, "SecureActionButtonTemplate")
+
+local overridesInstalled = false
+local overrideDeferred = false
+
+local function controllerChord(button)
+  return tostring(ForeverVoiceDB.controllerModifier) .. "-" .. tostring(button)
+end
+
+local function clearRecordingOverrides()
+  if InCombatLockdown and InCombatLockdown() then
+    overrideDeferred = true
+    return false
+  end
+  ClearOverrideBindings(overrideOwner)
+  overridesInstalled = false
+  overrideDeferred = false
+  return true
+end
+
+local function installRecordingOverrides()
+  if InCombatLockdown and InCombatLockdown() then
+    overrideDeferred = true
+    print("|cffffa500ForeverVoice|r: channel button suppression is unavailable until combat ends.")
+    return false
+  end
+
+  ClearOverrideBindings(overrideOwner)
+
+  SetOverrideBindingClick(overrideOwner, true, controllerChord(ForeverVoiceDB.controllerUpButton), "ForeverVoiceSwallowUp", "LeftButton")
+  SetOverrideBindingClick(overrideOwner, true, controllerChord(ForeverVoiceDB.controllerRightButton), "ForeverVoiceSwallowRight", "LeftButton")
+  SetOverrideBindingClick(overrideOwner, true, controllerChord(ForeverVoiceDB.controllerDownButton), "ForeverVoiceSwallowDown", "LeftButton")
+  SetOverrideBindingClick(overrideOwner, true, controllerChord(ForeverVoiceDB.controllerLeftButton), "ForeverVoiceSwallowLeft", "LeftButton")
+
+  overridesInstalled = true
+  overrideDeferred = false
+  return true
+end
+
+local function syncRecordingOverrides()
+  if state == "recording" then
+    if not overridesInstalled then
+      installRecordingOverrides()
+    end
+  elseif overridesInstalled or overrideDeferred then
+    clearRecordingOverrides()
+  end
+end
+
 -- Helper -> addon bridge ------------------------------------------------------
 -- Helper owns the real state. Ctrl+Alt+Shift+F5..F11 are reserved status
 -- signals because WoW reliably exposes these ordinary function keys.
@@ -180,6 +236,7 @@ bridge:SetScript("OnKeyDown", function(_, key)
   consumeBridgeKey()
   preview = false
   applyVisualState()
+  syncRecordingOverrides()
 end)
 
 -- Controller setup panel ------------------------------------------------------
@@ -297,9 +354,15 @@ end
 
 local events = CreateFrame("Frame")
 events:RegisterEvent("PLAYER_LOGIN")
-events:SetScript("OnEvent", function()
-  state = "idle"
-  preview = false
-  applyVisualState()
-  print("|cff69ccf0ForeverVoice|r loaded. /fv setup for controller mapping.")
+events:RegisterEvent("PLAYER_REGEN_ENABLED")
+events:SetScript("OnEvent", function(_, event)
+  if event == "PLAYER_LOGIN" then
+    state = "idle"
+    preview = false
+    applyVisualState()
+    syncRecordingOverrides()
+    print("|cff69ccf0ForeverVoice|r loaded. /fv setup for controller mapping.")
+  elseif event == "PLAYER_REGEN_ENABLED" and overrideDeferred then
+    syncRecordingOverrides()
+  end
 end)
