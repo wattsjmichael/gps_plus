@@ -156,7 +156,10 @@ local overridesInstalled = false
 local overrideDeferred = false
 
 local function controllerChord(button)
-  return tostring(setting("controllerModifier")) .. "-" .. tostring(button)
+  -- WoW treats PADLTRIGGER as a gamepad action-state switch, not as a normal
+  -- key modifier like CTRL/ALT/SHIFT. Override the underlying D-pad key itself
+  -- while recording so LT+D-pad cannot fall through to the gameplay action.
+  return tostring(button)
 end
 
 local function debugBinding(label, key)
@@ -353,7 +356,7 @@ SLASH_FOREVERVOICE1 = "/fv"
 SlashCmdList.FOREVERVOICE = function(msg)
   msg = (msg or ""):lower():gsub("^%s+",""):gsub("%s+$","")
   if msg == "debugbindings" then
-    print("|cff69ccf0ForeverVoice|r controller modifier=" .. tostring(setting("controllerModifier")))
+    print("|cff69ccf0ForeverVoice|r controller modifier=" .. tostring(setting("controllerModifier")) .. " (helper-only channel modifier)")
     print("  up=" .. tostring(controllerChord(setting("controllerUpButton"))))
     print("  right=" .. tostring(controllerChord(setting("controllerRightButton"))))
     print("  down=" .. tostring(controllerChord(setting("controllerDownButton"))))
