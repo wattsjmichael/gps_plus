@@ -133,9 +133,9 @@ local function applyVisualState()
 end
 
 -- Helper -> addon bridge ------------------------------------------------------
--- The helper owns the real recording state. It sends hidden F20 combinations:
--- Ctrl=General recording, Shift=Trade, Alt=Party, Ctrl+Shift=Guild,
--- Ctrl+Alt=Say, Shift+Alt=Transcribing, Ctrl+Shift+Alt=Idle.
+-- The helper is authoritative. Dedicated keys are status signals only:
+-- F13 General, F14 Trade, F15 Party, F16 Guild, F17 Say,
+-- F18 Transcribing, F19 Idle.
 local bridge = CreateFrame("Frame", "ForeverVoiceBridgeObserver", UIParent)
 bridge:SetSize(1, 1)
 bridge:SetPoint("CENTER")
@@ -144,33 +144,28 @@ bridge:SetPropagateKeyboardInput(true)
 bridge:Show()
 
 bridge:SetScript("OnKeyDown", function(_, key)
-  if key ~= "F20" then return end
-
-  local ctrl = IsControlKeyDown()
-  local shift = IsShiftKeyDown()
-  local alt = IsAltKeyDown()
-
-  if ctrl and shift and alt then
-    state = "idle"
-  elseif shift and alt and not ctrl then
-    state = "transcribing"
-  elseif ctrl and shift and not alt then
-    state = "recording"
-    channel = "guild"
-  elseif ctrl and alt and not shift then
-    state = "recording"
-    channel = "say"
-  elseif ctrl and not shift and not alt then
+  if key == "F13" then
     state = "recording"
     channel = "general"
-  elseif shift and not ctrl and not alt then
+  elseif key == "F14" then
     state = "recording"
     channel = "trade"
-  elseif alt and not ctrl and not shift then
+  elseif key == "F15" then
     state = "recording"
     channel = "party"
+  elseif key == "F16" then
+    state = "recording"
+    channel = "guild"
+  elseif key == "F17" then
+    state = "recording"
+    channel = "say"
+  elseif key == "F18" then
+    state = "transcribing"
+  elseif key == "F19" then
+    state = "idle"
+  else
+    return
   end
-
   preview = false
   applyVisualState()
 end)
@@ -292,6 +287,7 @@ local events = CreateFrame("Frame")
 events:RegisterEvent("PLAYER_LOGIN")
 events:SetScript("OnEvent", function()
   state = "idle"
+  preview = false
   applyVisualState()
   print("|cff69ccf0ForeverVoice|r loaded. /fv setup for controller mapping.")
 end)
