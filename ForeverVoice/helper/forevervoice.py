@@ -253,22 +253,32 @@ class App:
         self.settings.refresh()
 
     def bridge_signal(self, state, channel=None):
+        # Use ordinary WoW-visible keys with an obscure modifier chord.
+        # Ctrl+Alt+Shift+F5..F11 are reserved for the HUD bridge only.
         signals = {
-            ("recording", "general"): Key.f13,
-            ("recording", "trade"): Key.f14,
-            ("recording", "party"): Key.f15,
-            ("recording", "guild"): Key.f16,
-            ("recording", "say"): Key.f17,
-            ("transcribing", None): Key.f18,
-            ("idle", None): Key.f19,
+            ("recording", "general"): Key.f5,
+            ("recording", "trade"): Key.f6,
+            ("recording", "party"): Key.f7,
+            ("recording", "guild"): Key.f8,
+            ("recording", "say"): Key.f9,
+            ("transcribing", None): Key.f10,
+            ("idle", None): Key.f11,
         }
-        key = signals.get((state, channel)) or signals.get((state, None))
-        if key is None:
+        final = signals.get((state, channel)) or signals.get((state, None))
+        if final is None:
             return
-        self.keyboard.press(key)
-        time.sleep(0.02)
-        self.keyboard.release(key)
-        log(f"HUD: {state}{'/' + channel if channel else ''}")
+        try:
+            for mod in (Key.ctrl, Key.alt, Key.shift):
+                self.keyboard.press(mod)
+            time.sleep(0.01)
+            self.keyboard.press(final)
+            time.sleep(0.02)
+            self.keyboard.release(final)
+            for mod in (Key.shift, Key.alt, Key.ctrl):
+                self.keyboard.release(mod)
+            log(f"HUD: {state}{'/' + channel if channel else ''}")
+        except Exception as e:
+            log(f"HUD bridge failed: {e}")
 
     def start_recording(self):
         with self.lock:
