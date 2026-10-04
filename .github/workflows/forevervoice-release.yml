@@ -46,6 +46,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           name: ForeverVoice v0.3.1 Beta
+          prerelease: true
           body_path: ForeverVoice/CHANGELOG.md
           files: |
             ForeverVoice/release/ForeverVoiceSetup-v0.3.1.exe
