@@ -1,168 +1,121 @@
-# GamepadSpeak for WoW Forever
+# ForeverVoice
 
-Press a controller button, talk, press it again. Your words are typed into
-chat and sent, and the chat box closes. No keyboard, no pause in play.
+**Controller-first local speech-to-text chat for WoW Forever.**
 
-Two parts:
+> **Beta — Windows only**
+>
+> ForeverVoice requires the included Windows companion app. The WoW addon handles the in-game UI and controller behavior; the helper handles microphone capture and local speech-to-text.
 
-- `addon/GamepadSpeak` runs inside WoW Forever (the `_classic_beta_` client).
-  It owns the settings, shows a small "Recording / Transcribing" indicator,
-  opens the chat box at the right moment, and closes it after the text is sent.
-- `helper/` is a small Python program that runs next to the game on macOS,
-  Windows, or Linux. It watches the same controller button, records the mic,
-  transcribes locally with Whisper, then types the text into the game and
-  presses Enter.
+## Download
 
-A WoW addon cannot hear the microphone or run speech recognition, which is why
-the helper exists. The game never sees anything except ordinary key presses,
-and no audio leaves your PC.
+**Latest beta:**  
+https://github.com/wattsjmichael/gps_plus/releases/latest
 
-## Install
+Download:
 
-macOS / Linux:
+`ForeverVoiceSetup-v0.3.0.exe`
 
-```
-./install.sh
-```
+Run it once. The setup app:
 
-Windows (PowerShell):
+- finds WoW Forever automatically
+- detects an Xbox/XInput controller
+- lets you choose your microphone
+- installs the WoW addon
+- installs the ForeverVoice helper under your Windows profile
+- enables autostart
+- starts the helper
 
-```
-.\install.ps1
-```
+After that, launch WoW, type `/reload`, then:
 
-That copies the addon into `Interface/AddOns` of WoW Forever and prepares the
-helper's Python environment. Re-run it after editing the addon. (It is a copy
-rather than a symlink on purpose: the client did not load saved variables for
-a symlinked addon folder.)
-Set `WOW_DIR` first if your install is somewhere else. The helper needs Python
-3.10 to 3.13; [uv](https://docs.astral.sh/uv/) is used when present, otherwise
-a plain venv is created on first run.
+`/fv setup`
 
-## First-time setup
+## What ForeverVoice does
 
-1. Start WoW Forever with the controller connected. Enable GamepadSpeak in the
-   addon list (tick "Load out of date AddOns" if the beta build number moved).
-2. In game: `/gps setup`, then press the controller button you want as the
-   trigger. Pick one with no game action: Create, the touchpad click, or a spare
-   D-pad direction. The addon saves it and reloads the UI.
-3. Start the helper:
+Press one controller button to start recording. Keep playing while you talk.
 
-   ```
-   ./run-helper.sh            # macOS / Linux
-   .\run-helper.ps1           # Windows
-   ```
+While recording, hold your channel modifier and tap a D-pad direction to choose where the message goes. Press the same Voice button again to transcribe and send.
 
-   The first run downloads the Whisper model (about 150 MB for `base`).
-   On macOS the terminal you run it from needs Microphone and Accessibility
-   permission (System Settings > Privacy & Security). On Linux, keystroke
-   injection needs X11 (or XWayland) and `xdotool` for the foreground check.
-4. Check everything lines up:
+Recommended layout:
 
-   ```
-   ./run-helper.sh --check
-   ```
+- LT + Up → General
+- LT + Right → Trade
+- LT + Down → Reply to last whisper
+- LT + Left → Party
 
-## Using it
+Each direction can instead be assigned to:
 
-- Press the trigger: a short high beep, and the game shows "Recording".
-- Say your message.
-- Press the trigger again: a two-note beep, the game shows "Transcribing" and
-  opens the chat box. Within a moment the text is typed and sent, and the box
-  closes.
+- General
+- Trade
+- Say
+- Party
+- Guild
+- Raid
+- Instance
+- Reply to Last Whisper
+- any joined numbered channel
+- Off
 
-The message goes to whatever channel your chat box last used. Pin it with
-`/gps channel party` (or say, raid, guild, officer, instance) and go back to
-the sticky behavior with `/gps channel sticky`.
+ForeverVoice temporarily suppresses the D-pad gameplay bindings while recording, so changing channels does **not** also fire an ability.
 
-Other commands: `/gps status`, `/gps test hello there` (exercises the send path
-without the helper), `/gps api` (lists which chat functions the client has),
-`/gps reset`.
+## Local transcription
 
-## Beta client bug: saved variables never load
+Speech-to-text runs locally on your PC using Whisper.
 
-WoW Forever beta build 69913 (interface 16001) writes every addon's saved
-variables to disk but never reads them back, so all addon settings reset on
-every login and reload. This is a client bug, tracked by the community
-([forum thread](https://us.forums.blizzard.com/en/wow/t/savedvariables-never-load-in-the-beta-%E2%80%94-all-addon-settings-reset-on-login-69913/2354798),
-[bug report](https://github.com/ClassicWoWCommunity/forever-bugs/issues/34)).
+ForeverVoice does not send your microphone audio to a hosted transcription service.
 
-GamepadSpeak works around it the way [WickKeeper](https://github.com/Wicksmods/WickKeeper)
-does: it mirrors its settings into one account macro named `GPSpeak`, which is
-stored on Blizzard's server and survives. Don't edit or delete that macro. The
-WTF file is still written on every reload, which is what the helper reads.
-Macros can arrive a moment after the first login of a session; the addon
-restores as soon as they do and says so in chat.
+## In-game commands
 
-## How the pieces talk
+- `/fv setup` — controller and channel setup
+- `/fv slots` — show current channel assignments
+- `/fv move` — move the recording HUD
+- `/fv hide` — hide HUD preview
+- `/fv reset` — reset HUD position
 
-- Addon → helper: the addon writes `GamepadSpeakDB` to
-  `WTF/Account/<account>/SavedVariables/GamepadSpeak.lua`. WoW only flushes
-  that file on `/reload` or logout, so setup reloads for you. The helper polls
-  the file every two seconds and rebinds when it changes.
-- Controller: the helper uses SDL's game controller API, the same library WoW
-  Forever uses, so the `PAD*` names in the addon map one-to-one to SDL buttons
-  (PAD1 = A/Cross, PADSOCIAL = Create/View, PADBACK = touchpad click, and so
-  on). An unrecognized pad can still be used with `--raw-button N`.
-- Helper → game: after transcription the helper presses Enter (the game's own
-  Open Chat binding), types the text, presses Enter to send, then types
-  `/click InputFunctionBindingButton_PAD2 LeftButton 1` and Enter. That is
-  exactly what the gamepad Back button does: Blizzard routes Circle/B through
-  an override binding that clicks that named button, and `/click` is a secure
-  slash command. Every step is a real key press handled by Blizzard code.
-- Why it's done this way: in WoW Forever's gamepad style the chat box keeps
-  focus after a send, and any attempt by addon code to open or clear chat
-  focus runs into a protected gamepad call. That taint spreads into the
-  gamepad binding stack and can freeze the client. SecureHandler snippets
-  would be the textbook answer, but this beta client cannot compile them
-  (`loadstring_untainted` is missing, another known client bug). So the addon
-  never touches chat focus itself; it only computes the close command from
-  Blizzard's key constant and stores it for the helper.
-- Safety: the helper only types when a World of Warcraft window is in the
-  foreground (where the platform lets it check). Otherwise it logs the
-  transcript and plays an error beep.
+## Requirements
 
-## Helper options
+- Windows
+- WoW Forever
+- XInput-compatible controller
+- microphone
 
-```
---language bg          speech language (default: auto-detect)
---model small          Whisper model: tiny, base, small, medium, large-v3 (default: base)
---device cuda          run Whisper on an NVIDIA GPU (default: auto)
---button PADSOCIAL     override the trigger from the addon
---raw-button 4         raw joystick button index for unmapped pads
---input-device NAME    pick a specific microphone
---open-key ENTER       key that opens chat before typing: ENTER (default), a binding, or none
---close-command CMD    slash command typed after sending (default auto = from the addon; none to skip)
---close-key none       extra key pressed after sending, e.g. ESCAPE (default none)
---silent               no beeps
---max-seconds 60       auto-stop a forgotten recording
---any-app              type even if WoW is not in the foreground (testing)
---wow-dir PATH         the _classic_beta_ folder if not in the default place
---check                print status and exit
-```
+## Beta feedback
 
-`base` is a good default for English on any recent CPU. For Bulgarian or other
-languages, `small` with `--language bg` is noticeably more accurate.
+If something breaks, open a GitHub issue and include:
 
-## Things to verify in the first live test
+- controller model
+- whether Setup found WoW automatically
+- whether your microphone worked
+- what channel slot you were using
+- whether LT + D-pad fired a gameplay ability
+- any helper error text
 
-These depend on WoW Forever behavior that can't be confirmed outside the game:
+Issues:  
+https://github.com/wattsjmichael/gps_plus/issues
 
-1. The addon sees the trigger press while the game's own gamepad UI is active
-   (it relies on `OnGamePadButtonDown` with input propagation on).
-2. The helper still receives controller input while WoW holds the pad. SDL is
-   started with background events allowed; if nothing arrives, the pad is being
-   opened exclusively and `--raw-button` over the joystick API is the fallback.
-3. Synthetic key events reach the chat box and don't flip the UI out of gamepad
-   style (`InputDeviceInterfaceStyle`). If they do, try `--open-key none` with
-   `/gps open on` so only the text and Enter are injected.
+## Trust and verification
 
-## Layout
+ForeverVoice is open source.
 
-```
-addon/GamepadSpeak/          GamepadSpeak.toc, GamepadSpeak.lua, Bindings.xml
-helper/gamepadspeak_helper.py  controller, mic, Whisper, keystrokes, settings watcher
-helper/pyproject.toml        dependencies (pygame-ce, sounddevice, faster-whisper, pynput)
-install.sh / install.ps1     put the addon in WoW + prepare the helper env
-run-helper.sh / run-helper.ps1  run the helper in the foreground with logs
-```
+Each public Windows release includes a SHA256 checksum for the Setup EXE so testers can verify they downloaded the same file that was published.
+
+## Development
+
+ForeverVoice lives in the `ForeverVoice/` directory.
+
+Useful scripts:
+
+- `build-setup.ps1` — build the one-click Windows installer
+- `release.ps1` — create the versioned Setup EXE + SHA256
+- `build-helper.ps1` — build the helper by itself
+
+Release candidate branch:
+
+`forevervoice/v0.3-oneclick-rc`
+
+Known-good controller snapshot:
+
+`forevervoice/known-good-controller`
+
+## Status
+
+ForeverVoice v0.3 is currently in beta testing.
