@@ -11,6 +11,8 @@ ForeverVoiceDB = ForeverVoiceDB or {}
 
 local state = "idle"
 local channel = "general"
+local activeChannel = nil
+local queuedChannel = nil
 local preview = false
 
 local CHANNELS = {
@@ -104,7 +106,8 @@ fade:SetDuration(0.55)
 fade:SetSmoothing("IN_OUT")
 
 local function applyVisualState()
-  local info = CHANNELS[channel] or CHANNELS.general
+  local shownChannel = activeChannel or channel
+  local info = CHANNELS[shownChannel] or CHANNELS.general
   icon.badge.text:SetText(info.label)
 
   if state == "recording" then
@@ -134,7 +137,8 @@ end
 icon:SetScript("OnEnter", function(self)
   GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
   GameTooltip:AddLine("ForeverVoice")
-  local info = CHANNELS[channel] or CHANNELS.general
+  local shownChannel = activeChannel or channel
+  local info = CHANNELS[shownChannel] or CHANNELS.general
   GameTooltip:AddLine("Channel: " .. info.name, 1, 1, 1)
   if state == "recording" then
     GameTooltip:AddLine("Recording", 1, 0.25, 0.25)
@@ -150,12 +154,19 @@ icon:SetScript("OnLeave", GameTooltip_Hide)
 function ForeverVoice_Toggle()
   if state == "idle" then
     preview = false
+    activeChannel = channel
+    queuedChannel = nil
     state = "recording"
   elseif state == "recording" then
     state = "transcribing"
     C_Timer.After(8, function()
       if state == "transcribing" then
         state = "idle"
+        activeChannel = nil
+        if queuedChannel then
+          channel = queuedChannel
+          queuedChannel = nil
+        end
         applyVisualState()
       end
     end)
@@ -166,10 +177,13 @@ function ForeverVoice_Toggle()
 end
 
 function ForeverVoice_SelectChannel(which)
-  if CHANNELS[which] then
+  if not CHANNELS[which] then return end
+  if state == "recording" or state == "transcribing" then
+    queuedChannel = which
+  else
     channel = which
-    applyVisualState()
   end
+  applyVisualState()
 end
 
 -- The helper listens to these globally. This observer mirrors the same keys
