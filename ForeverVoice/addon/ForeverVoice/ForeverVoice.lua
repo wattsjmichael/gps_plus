@@ -18,7 +18,18 @@ local DEFAULTS = {
 }
 
 for k, v in pairs(DEFAULTS) do
-  if not ForeverVoiceDB[k] then ForeverVoiceDB[k] = v end
+  if ForeverVoiceDB[k] == nil or ForeverVoiceDB[k] == "" then
+    ForeverVoiceDB[k] = v
+  end
+end
+
+local function setting(key)
+  local value = ForeverVoiceDB[key]
+  if value == nil or value == "" then
+    value = DEFAULTS[key]
+    ForeverVoiceDB[key] = value
+  end
+  return value
 end
 
 local state = "idle"
@@ -145,12 +156,7 @@ local overridesInstalled = false
 local overrideDeferred = false
 
 local function controllerChord(button)
-  -- WoW's gamepad modifier syntax is not guaranteed to be a literal
-  -- "PADLTRIGGER-PADDUP". Ask the binding system to normalize the chord by
-  -- temporarily assigning it through a hidden secure button and then reading
-  -- back the key string that WoW accepted.
-  local raw = tostring(ForeverVoiceDB.controllerModifier) .. "-" .. tostring(button)
-  return raw
+  return tostring(setting("controllerModifier")) .. "-" .. tostring(button)
 end
 
 local function debugBinding(label, key)
@@ -178,10 +184,10 @@ local function installRecordingOverrides()
 
   ClearOverrideBindings(overrideOwner)
 
-  local upKey = controllerChord(ForeverVoiceDB.controllerUpButton)
-  local rightKey = controllerChord(ForeverVoiceDB.controllerRightButton)
-  local downKey = controllerChord(ForeverVoiceDB.controllerDownButton)
-  local leftKey = controllerChord(ForeverVoiceDB.controllerLeftButton)
+  local upKey = controllerChord(setting("controllerUpButton"))
+  local rightKey = controllerChord(setting("controllerRightButton"))
+  local downKey = controllerChord(setting("controllerDownButton"))
+  local leftKey = controllerChord(setting("controllerLeftButton"))
 
   debugBinding("up", upKey)
   debugBinding("right", rightKey)
@@ -347,14 +353,14 @@ SLASH_FOREVERVOICE1 = "/fv"
 SlashCmdList.FOREVERVOICE = function(msg)
   msg = (msg or ""):lower():gsub("^%s+",""):gsub("%s+$","")
   if msg == "debugbindings" then
-    print("|cff69ccf0ForeverVoice|r controller modifier=" .. tostring(ForeverVoiceDB.controllerModifier))
-    print("  up=" .. tostring(controllerChord(ForeverVoiceDB.controllerUpButton)))
-    print("  right=" .. tostring(controllerChord(ForeverVoiceDB.controllerRightButton)))
-    print("  down=" .. tostring(controllerChord(ForeverVoiceDB.controllerDownButton)))
-    print("  left=" .. tostring(controllerChord(ForeverVoiceDB.controllerLeftButton)))
+    print("|cff69ccf0ForeverVoice|r controller modifier=" .. tostring(setting("controllerModifier")))
+    print("  up=" .. tostring(controllerChord(setting("controllerUpButton"))))
+    print("  right=" .. tostring(controllerChord(setting("controllerRightButton"))))
+    print("  down=" .. tostring(controllerChord(setting("controllerDownButton"))))
+    print("  left=" .. tostring(controllerChord(setting("controllerLeftButton"))))
   elseif msg == "setup" or msg == "controller" then
-    voiceButton:SetText(ForeverVoiceDB.controllerToggle)
-    modifierButton:SetText(ForeverVoiceDB.controllerModifier)
+    voiceButton:SetText(setting("controllerToggle"))
+    modifierButton:SetText(setting("controllerModifier"))
     setup:Show()
   elseif msg == "show" or msg == "move" then
     preview = true
