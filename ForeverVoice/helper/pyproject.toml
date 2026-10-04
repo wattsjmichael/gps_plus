@@ -1,6 +1,6 @@
 [project]
 name = "forevervoice-helper"
-version = "0.3.0"
+version = "0.3.1"
 requires-python = ">=3.11,<3.14"
 dependencies = [
   "faster-whisper>=1.2.0",
