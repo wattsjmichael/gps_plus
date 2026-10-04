@@ -144,12 +144,26 @@ class App:
             self.active_channel = None
             self.active_prefix = None
 
-    def deliver(self, text):
-        self.keyboard.press(Key.enter); self.keyboard.release(Key.enter)
-        time.sleep(0.10)
+    def type_text(self, text):
         for ch in text:
             self.keyboard.press(ch); self.keyboard.release(ch)
             time.sleep(0.002)
+
+    def deliver(self, text):
+        # Open chat, type and send the dictated message.
+        self.keyboard.press(Key.enter); self.keyboard.release(Key.enter)
+        time.sleep(0.12)
+        self.type_text(text)
+        time.sleep(0.04)
+        self.keyboard.press(Key.enter); self.keyboard.release(Key.enter)
+
+        # WoW Forever's gamepad chat style can leave the edit box focused after
+        # sending. Use the same secure Blizzard click path proven by the original
+        # GamepadSpeak helper to deactivate it without addon taint.
+        time.sleep(0.15)
+        close_command = "/click InputFunctionBindingButton_PAD2 LeftButton 1"
+        self.type_text(close_command)
+        time.sleep(0.03)
         self.keyboard.press(Key.enter); self.keyboard.release(Key.enter)
 
     def run(self):
