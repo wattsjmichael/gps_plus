@@ -92,8 +92,9 @@ class SetupApp:
     def __init__(self):
         self.root = tk.Tk()
         self.root.title("ForeverVoice Setup")
-        self.root.geometry("620x430")
-        self.root.resizable(False, False)
+        self.root.geometry("620x500")
+        self.root.minsize(620, 500)
+        self.root.resizable(False, True)
 
         self.wow_path = tk.StringVar(value=str(find_wow() or ""))
         self.autostart = tk.BooleanVar(value=True)
@@ -147,8 +148,8 @@ class SetupApp:
         self.status.pack(anchor="w", pady=(8, 0))
 
         buttons = ttk.Frame(frame)
-        buttons.pack(fill="x", pady=(20, 0))
-        self.install_button = ttk.Button(buttons, text="Install ForeverVoice", command=self.install)
+        buttons.pack(side="bottom", fill="x", pady=(20, 0))
+        self.install_button = ttk.Button(buttons, text="Install & Finish", command=self.install)
         self.install_button.pack(side="right", ipadx=16, ipady=5)
 
     def browse_wow(self):
