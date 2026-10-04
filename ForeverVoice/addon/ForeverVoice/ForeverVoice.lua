@@ -2,6 +2,7 @@ local ADDON_NAME = ...
 BINDING_HEADER_FOREVERVOICE = "ForeverVoice"
 BINDING_NAME_FOREVERVOICE_TOGGLE = "Voice: Start / Stop"
 BINDING_NAME_FOREVERVOICE_GENERAL = "Voice Channel: General"
+BINDING_NAME_FOREVERVOICE_TRADE = "Voice Channel: Trade"
 BINDING_NAME_FOREVERVOICE_PARTY = "Voice Channel: Party"
 BINDING_NAME_FOREVERVOICE_GUILD = "Voice Channel: Guild"
 BINDING_NAME_FOREVERVOICE_SAY = "Voice Channel: Say"
@@ -14,6 +15,7 @@ local preview = false
 
 local CHANNELS = {
   general = { label = "1", name = "GENERAL /1" },
+  trade   = { label = "2", name = "TRADE /2" },
   party   = { label = "P", name = "PARTY /p" },
   guild   = { label = "G", name = "GUILD /g" },
   say     = { label = "S", name = "SAY /s" },
@@ -184,6 +186,8 @@ observer:SetScript("OnKeyDown", function(_, key)
     ForeverVoice_Toggle()
   elseif key == "PAGEUP" then
     ForeverVoice_SelectChannel("general")
+  elseif key == "DELETE" then
+    ForeverVoice_SelectChannel("trade")
   elseif key == "END" then
     ForeverVoice_SelectChannel("party")
   elseif key == "PAGEDOWN" then
@@ -219,7 +223,7 @@ SlashCmdList.FOREVERVOICE = function(msg)
   else
     print("|cff69ccf0ForeverVoice|r")
     print("Insert = record / stop")
-    print("PageUp = General, End = Party, PageDown = Guild, Home = Say")
+    print("PageUp = General, Delete = Trade, End = Party, PageDown = Guild, Home = Say")
     print("/fv move - show and drag the icon")
     print("/fv hide - hide preview")
     print("/fv reset - reset icon position")
