@@ -82,6 +82,8 @@ class App:
         self.state = "idle"
         self.channel = "general"
         self.prefix = "/1 "
+        self.active_channel = None
+        self.active_prefix = None
         self.recorder = Recorder(args.input_device)
         self.keyboard = Controller()
         self.model = WhisperModel(args.model, device="cpu", compute_type="int8")
@@ -100,8 +102,10 @@ class App:
                 except Exception as e:
                     log(f"Mic failed: {e}")
                     return
+                self.active_channel = self.channel
+                self.active_prefix = self.prefix
                 self.state = "recording"
-                log(f"Recording... channel={self.channel}")
+                log(f"Recording... channel={self.active_channel} destination={self.active_prefix.strip()}")
             elif self.state == "recording":
                 audio = self.recorder.stop()
                 self.state = "transcribing"
@@ -110,7 +114,10 @@ class App:
 
     def select_channel(self, name, prefix):
         self.channel, self.prefix = name, prefix
-        log(f"Channel: {name}")
+        if self.state in ("recording", "transcribing"):
+            log(f"Channel queued for next message: {name}")
+        else:
+            log(f"Channel: {name}")
 
     def finish(self, audio):
         try:
@@ -126,12 +133,16 @@ class App:
             if not wow_frontmost() and not self.args.any_app:
                 log(f"WoW is not frontmost ({frontmost_app_name()}); not typing")
                 return
-            self.deliver(self.prefix + text)
-            log("Sent")
+            outgoing = (self.active_prefix or self.prefix) + text
+            log(f"Sending: {outgoing}")
+            self.deliver(outgoing)
+            log(f"Sent to {self.active_channel or self.channel}")
         except Exception as e:
             log(f"Transcription/send failed: {e}")
         finally:
             self.state = "idle"
+            self.active_channel = None
+            self.active_prefix = None
 
     def deliver(self, text):
         self.keyboard.press(Key.enter); self.keyboard.release(Key.enter)
