@@ -13,8 +13,9 @@ local DEFAULTS = {
   controllerLeftButton = "PADDLEFT",
   controllerUpChannel = "general",
   controllerRightChannel = "trade",
-  controllerDownChannel = "guild",
+  controllerDownChannel = "reply",
   controllerLeftChannel = "party",
+  firstRunComplete = false,
 }
 
 for k, v in pairs(DEFAULTS) do
@@ -37,13 +38,26 @@ local channel = "general"
 local preview = false
 local captureTarget = nil
 
-local CHANNELS = {
-  general = { label = "1", name = "GENERAL /1" },
-  trade   = { label = "2", name = "TRADE /2" },
-  party   = { label = "P", name = "PARTY /p" },
-  guild   = { label = "G", name = "GUILD /g" },
-  say     = { label = "S", name = "SAY /s" },
+local CHANNEL_INFO = {
+  general = { label = "1", name = "General /1" },
+  trade = { label = "2", name = "Trade /2" },
+  party = { label = "P", name = "Party /p" },
+  guild = { label = "G", name = "Guild /g" },
+  say = { label = "S", name = "Say /s" },
+  reply = { label = "R", name = "Reply to last whisper /r" },
+  raid = { label = "R", name = "Raid /raid" },
+  instance = { label = "I", name = "Instance /i" },
+  custom = { label = "#", name = "Numbered channel" },
+  off = { label = "-", name = "Off" },
 }
+
+local function channelInfo(which)
+  if which and string.match(which, "^channel:%d+$") then
+    local id = string.match(which, "^channel:(%d+)$")
+    return { label = "#", name = "Channel /" .. tostring(id) }
+  end
+  return CHANNEL_INFO[which] or CHANNEL_INFO.general
+end
 
 local function savePosition(frame)
   local point, _, relativePoint, x, y = frame:GetPoint(1)
@@ -53,6 +67,7 @@ local function savePosition(frame)
   ForeverVoiceDB.y = y
 end
 
+-- HUD ------------------------------------------------------------------------
 local icon = CreateFrame("Frame", "ForeverVoiceStatusIcon", UIParent, "BackdropTemplate")
 icon:SetSize(44, 44)
 icon:SetFrameStrata("HIGH")
@@ -116,7 +131,7 @@ fade:SetDuration(0.55)
 fade:SetSmoothing("IN_OUT")
 
 local function applyVisualState()
-  local info = CHANNELS[channel] or CHANNELS.general
+  local info = channelInfo(channel)
   icon.badge.text:SetText(info.label)
 
   if state == "recording" then
@@ -143,29 +158,15 @@ local function applyVisualState()
   end
 end
 
--- Recording-only controller swallow layer -----------------------------------
--- While the helper is recording, reserve the configured modifier+D-pad chords
--- so WoW does not also execute their normal gameplay bindings.
+-- Recording-only D-pad suppression -------------------------------------------
 local overrideOwner = CreateFrame("Frame", "ForeverVoiceOverrideOwner", UIParent)
-local swallowUp = CreateFrame("Button", "ForeverVoiceSwallowUp", UIParent, "SecureActionButtonTemplate")
-local swallowRight = CreateFrame("Button", "ForeverVoiceSwallowRight", UIParent, "SecureActionButtonTemplate")
-local swallowDown = CreateFrame("Button", "ForeverVoiceSwallowDown", UIParent, "SecureActionButtonTemplate")
-local swallowLeft = CreateFrame("Button", "ForeverVoiceSwallowLeft", UIParent, "SecureActionButtonTemplate")
+CreateFrame("Button", "ForeverVoiceSwallowUp", UIParent, "SecureActionButtonTemplate")
+CreateFrame("Button", "ForeverVoiceSwallowRight", UIParent, "SecureActionButtonTemplate")
+CreateFrame("Button", "ForeverVoiceSwallowDown", UIParent, "SecureActionButtonTemplate")
+CreateFrame("Button", "ForeverVoiceSwallowLeft", UIParent, "SecureActionButtonTemplate")
 
 local overridesInstalled = false
 local overrideDeferred = false
-
-local function controllerChord(button)
-  -- WoW treats PADLTRIGGER as a gamepad action-state switch, not as a normal
-  -- key modifier like CTRL/ALT/SHIFT. Override the underlying D-pad key itself
-  -- while recording so LT+D-pad cannot fall through to the gameplay action.
-  return tostring(button)
-end
-
-local function debugBinding(label, key)
-  local action = GetBindingAction and GetBindingAction(key, true) or ""
-  print("|cff69ccf0ForeverVoice|r override " .. label .. " key=" .. tostring(key) .. " action=" .. tostring(action))
-end
 
 local function clearRecordingOverrides()
   if InCombatLockdown and InCombatLockdown() then
@@ -181,27 +182,15 @@ end
 local function installRecordingOverrides()
   if InCombatLockdown and InCombatLockdown() then
     overrideDeferred = true
-    print("|cffffa500ForeverVoice|r: channel button suppression is unavailable until combat ends.")
+    print("|cffffa500ForeverVoice|r: D-pad suppression will activate when combat ends.")
     return false
   end
 
   ClearOverrideBindings(overrideOwner)
-
-  local upKey = controllerChord(setting("controllerUpButton"))
-  local rightKey = controllerChord(setting("controllerRightButton"))
-  local downKey = controllerChord(setting("controllerDownButton"))
-  local leftKey = controllerChord(setting("controllerLeftButton"))
-
-  debugBinding("up", upKey)
-  debugBinding("right", rightKey)
-  debugBinding("down", downKey)
-  debugBinding("left", leftKey)
-
-  SetOverrideBindingClick(overrideOwner, true, upKey, "ForeverVoiceSwallowUp", "LeftButton")
-  SetOverrideBindingClick(overrideOwner, true, rightKey, "ForeverVoiceSwallowRight", "LeftButton")
-  SetOverrideBindingClick(overrideOwner, true, downKey, "ForeverVoiceSwallowDown", "LeftButton")
-  SetOverrideBindingClick(overrideOwner, true, leftKey, "ForeverVoiceSwallowLeft", "LeftButton")
-
+  SetOverrideBindingClick(overrideOwner, true, tostring(setting("controllerUpButton")), "ForeverVoiceSwallowUp", "LeftButton")
+  SetOverrideBindingClick(overrideOwner, true, tostring(setting("controllerRightButton")), "ForeverVoiceSwallowRight", "LeftButton")
+  SetOverrideBindingClick(overrideOwner, true, tostring(setting("controllerDownButton")), "ForeverVoiceSwallowDown", "LeftButton")
+  SetOverrideBindingClick(overrideOwner, true, tostring(setting("controllerLeftButton")), "ForeverVoiceSwallowLeft", "LeftButton")
   overridesInstalled = true
   overrideDeferred = false
   return true
@@ -209,17 +198,13 @@ end
 
 local function syncRecordingOverrides()
   if state == "recording" then
-    if not overridesInstalled then
-      installRecordingOverrides()
-    end
+    if not overridesInstalled then installRecordingOverrides() end
   elseif overridesInstalled or overrideDeferred then
     clearRecordingOverrides()
   end
 end
 
 -- Helper -> addon bridge ------------------------------------------------------
--- Helper owns the real state. Ctrl+Alt+Shift+F5..F11 are reserved status
--- signals because WoW reliably exposes these ordinary function keys.
 local bridge = CreateFrame("Frame", "ForeverVoiceBridgeObserver", UIParent)
 bridge:SetSize(1, 1)
 bridge:SetPoint("CENTER")
@@ -235,32 +220,20 @@ local function consumeBridgeKey()
 end
 
 bridge:SetScript("OnKeyDown", function(_, key)
-  if not (IsControlKeyDown() and IsAltKeyDown() and IsShiftKeyDown()) then
-    return
-  end
+  if not (IsControlKeyDown() and IsAltKeyDown() and IsShiftKeyDown()) then return end
 
-  if key == "F5" then
-    state = "recording"
-    channel = "general"
-  elseif key == "F6" then
-    state = "recording"
-    channel = "trade"
-  elseif key == "F7" then
-    state = "recording"
-    channel = "party"
-  elseif key == "F8" then
-    state = "recording"
-    channel = "guild"
-  elseif key == "F9" then
-    state = "recording"
-    channel = "say"
-  elseif key == "F10" then
-    state = "transcribing"
-  elseif key == "F11" then
-    state = "idle"
-  else
-    return
-  end
+  if key == "F5" then state, channel = "recording", "general"
+  elseif key == "F6" then state, channel = "recording", "trade"
+  elseif key == "F7" then state, channel = "recording", "party"
+  elseif key == "F8" then state, channel = "recording", "guild"
+  elseif key == "F9" then state, channel = "recording", "say"
+  elseif key == "F10" then state, channel = "recording", "reply"
+  elseif key == "F11" then state, channel = "recording", "raid"
+  elseif key == "F12" then state, channel = "recording", "instance"
+  elseif key == "HOME" then state, channel = "recording", "custom"
+  elseif key == "END" then state = "transcribing"
+  elseif key == "PAGEDOWN" then state = "idle"
+  else return end
 
   consumeBridgeKey()
   preview = false
@@ -268,9 +241,65 @@ bridge:SetScript("OnKeyDown", function(_, key)
   syncRecordingOverrides()
 end)
 
--- Controller setup panel ------------------------------------------------------
+-- Smart channel choices -------------------------------------------------------
+local function addChoice(list, value, text)
+  table.insert(list, { value = value, text = text })
+end
+
+local function channelChoices()
+  local list = {}
+  addChoice(list, "off", "Off")
+  addChoice(list, "general", "General /1")
+  addChoice(list, "trade", "Trade /2")
+  addChoice(list, "say", "Say /s")
+  addChoice(list, "reply", "Reply to last whisper /r")
+
+  if IsInGroup and IsInGroup() then
+    addChoice(list, "party", "Party /p")
+  else
+    addChoice(list, "party", "Party /p (when grouped)")
+  end
+
+  if IsInGuild and IsInGuild() then
+    addChoice(list, "guild", "Guild /g")
+  end
+
+  if IsInRaid and IsInRaid() then
+    addChoice(list, "raid", "Raid /raid")
+  end
+
+  local instanceGroup = false
+  if IsInGroup and LE_PARTY_CATEGORY_INSTANCE then
+    instanceGroup = IsInGroup(LE_PARTY_CATEGORY_INSTANCE)
+  end
+  if instanceGroup then
+    addChoice(list, "instance", "Instance /i")
+  end
+
+  if GetChannelList then
+    local raw = { GetChannelList() }
+    for i = 1, #raw, 3 do
+      local id = tonumber(raw[i])
+      local name = raw[i + 1]
+      if id and name and id > 0 then
+        addChoice(list, "channel:" .. tostring(id), "#" .. tostring(id) .. " " .. tostring(name))
+      end
+    end
+  end
+
+  return list
+end
+
+local function choiceText(value)
+  for _, item in ipairs(channelChoices()) do
+    if item.value == value then return item.text end
+  end
+  return channelInfo(value).name
+end
+
+-- Setup / onboarding ----------------------------------------------------------
 local setup = CreateFrame("Frame", "ForeverVoiceSetupFrame", UIParent, "BackdropTemplate")
-setup:SetSize(390, 245)
+setup:SetSize(560, 430)
 setup:SetPoint("CENTER")
 setup:SetFrameStrata("DIALOG")
 setup:SetMovable(true)
@@ -288,25 +317,29 @@ setup:Hide()
 
 setup.title = setup:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
 setup.title:SetPoint("TOP", 0, -20)
-setup.title:SetText("ForeverVoice Controller")
+setup.title:SetText("ForeverVoice Setup")
 
 setup.help = setup:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-setup.help:SetPoint("TOP", setup.title, "BOTTOM", 0, -8)
-setup.help:SetWidth(340)
-setup.help:SetText("The helper owns recording. The addon only saves controller mappings and displays helper status.")
+setup.help:SetPoint("TOP", setup.title, "BOTTOM", 0, -7)
+setup.help:SetWidth(500)
+setup.help:SetText("Pick Start/Send, your channel modifier, then choose what each direction means. Changes are written for the helper when you Save + Reload.")
 
-local function makeLabel(text, y)
-  local fs = setup:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-  fs:SetPoint("TOPLEFT", 28, y)
+local function label(text, x, y, template)
+  local fs = setup:CreateFontString(nil, "OVERLAY", template or "GameFontNormal")
+  fs:SetPoint("TOPLEFT", x, y)
   fs:SetText(text)
   return fs
 end
 
+label("1. Controller", 28, -78, "GameFontNormalLarge")
+label("Voice Start / Send", 42, -112)
+label("Channel Select modifier", 42, -148)
+
 local function makeCaptureButton(dbKey, y)
   local b = CreateFrame("Button", nil, setup, "UIPanelButtonTemplate")
-  b:SetSize(145, 24)
-  b:SetPoint("TOPRIGHT", -28, y + 5)
-  b:SetText(ForeverVoiceDB[dbKey])
+  b:SetSize(180, 25)
+  b:SetPoint("TOPRIGHT", -35, y + 5)
+  b:SetText(setting(dbKey))
   b:SetScript("OnClick", function(self)
     captureTarget = { key = dbKey, button = self }
     self:SetText("Press controller button...")
@@ -314,37 +347,71 @@ local function makeCaptureButton(dbKey, y)
   return b
 end
 
-makeLabel("Voice Start / Send", -82)
-local voiceButton = makeCaptureButton("controllerToggle", -82)
-makeLabel("Channel modifier", -118)
-local modifierButton = makeCaptureButton("controllerModifier", -118)
+local voiceButton = makeCaptureButton("controllerToggle", -112)
+local modifierButton = makeCaptureButton("controllerModifier", -148)
 
-local mapText = setup:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-mapText:SetPoint("TOPLEFT", 28, -158)
-mapText:SetText("While recording:\nLT + Up = General /1\nLT + Right = Trade /2\nLT + Down = Guild /g\nLT + Left = Party /p")
+label("2. Channel slots", 28, -196, "GameFontNormalLarge")
+label("These only take over while recording. Set unused directions to Off.", 42, -226, "GameFontHighlightSmall")
+
+local slotDefs = {
+  { key = "controllerUpChannel", text = "Modifier + Up", y = -258 },
+  { key = "controllerRightChannel", text = "Modifier + Right", y = -294 },
+  { key = "controllerDownChannel", text = "Modifier + Down", y = -330 },
+  { key = "controllerLeftChannel", text = "Modifier + Left", y = -366 },
+}
+local slotButtons = {}
+
+local function cycleChoice(dbKey, button)
+  local choices = channelChoices()
+  local current = setting(dbKey)
+  local index = 0
+  for i, item in ipairs(choices) do
+    if item.value == current then index = i break end
+  end
+  index = index + 1
+  if index > #choices then index = 1 end
+  ForeverVoiceDB[dbKey] = choices[index].value
+  button:SetText(choices[index].text)
+end
+
+for _, def in ipairs(slotDefs) do
+  label(def.text, 42, def.y)
+  local b = CreateFrame("Button", nil, setup, "UIPanelButtonTemplate")
+  b:SetSize(230, 25)
+  b:SetPoint("TOPRIGHT", -35, def.y + 5)
+  b:SetText(choiceText(setting(def.key)))
+  b:SetScript("OnClick", function(self) cycleChoice(def.key, self) end)
+  slotButtons[def.key] = b
+end
 
 local save = CreateFrame("Button", nil, setup, "UIPanelButtonTemplate")
-save:SetSize(115, 24)
-save:SetPoint("BOTTOMRIGHT", -28, 22)
+save:SetSize(130, 26)
+save:SetPoint("BOTTOMRIGHT", -28, 20)
 save:SetText("Save + Reload")
 save:SetScript("OnClick", function()
+  ForeverVoiceDB.firstRunComplete = true
   setup:Hide()
   ReloadUI()
 end)
 
 local close = CreateFrame("Button", nil, setup, "UIPanelButtonTemplate")
-close:SetSize(80, 24)
+close:SetSize(85, 26)
 close:SetPoint("RIGHT", save, "LEFT", -8, 0)
 close:SetText("Close")
 close:SetScript("OnClick", function() setup:Hide() end)
 
--- This observer is ONLY for mapping capture now. It never changes recording
--- state or channels; the helper is authoritative.
+local function refreshSetup()
+  voiceButton:SetText(setting("controllerToggle"))
+  modifierButton:SetText(setting("controllerModifier"))
+  for _, def in ipairs(slotDefs) do
+    slotButtons[def.key]:SetText(choiceText(setting(def.key)))
+  end
+end
+
 local controllerCapture = CreateFrame("Frame", "ForeverVoiceControllerCapture", UIParent)
 controllerCapture:EnableGamePadButton(true)
 controllerCapture:SetPropagateKeyboardInput(true)
 controllerCapture:Show()
-
 controllerCapture:SetScript("OnGamePadButtonDown", function(_, button)
   if not captureTarget then return end
   ForeverVoiceDB[captureTarget.key] = button
@@ -352,18 +419,12 @@ controllerCapture:SetScript("OnGamePadButtonDown", function(_, button)
   captureTarget = nil
 end)
 
+-- Slash commands --------------------------------------------------------------
 SLASH_FOREVERVOICE1 = "/fv"
 SlashCmdList.FOREVERVOICE = function(msg)
   msg = (msg or ""):lower():gsub("^%s+",""):gsub("%s+$","")
-  if msg == "debugbindings" then
-    print("|cff69ccf0ForeverVoice|r controller modifier=" .. tostring(setting("controllerModifier")) .. " (helper-only channel modifier)")
-    print("  up=" .. tostring(controllerChord(setting("controllerUpButton"))))
-    print("  right=" .. tostring(controllerChord(setting("controllerRightButton"))))
-    print("  down=" .. tostring(controllerChord(setting("controllerDownButton"))))
-    print("  left=" .. tostring(controllerChord(setting("controllerLeftButton"))))
-  elseif msg == "setup" or msg == "controller" then
-    voiceButton:SetText(setting("controllerToggle"))
-    modifierButton:SetText(setting("controllerModifier"))
+  if msg == "setup" or msg == "controller" then
+    refreshSetup()
     setup:Show()
   elseif msg == "show" or msg == "move" then
     preview = true
@@ -379,25 +440,42 @@ SlashCmdList.FOREVERVOICE = function(msg)
     savePosition(icon)
     preview = true
     applyVisualState()
+  elseif msg == "slots" then
+    print("|cff69ccf0ForeverVoice|r slots:")
+    print("  Up: " .. choiceText(setting("controllerUpChannel")))
+    print("  Right: " .. choiceText(setting("controllerRightChannel")))
+    print("  Down: " .. choiceText(setting("controllerDownChannel")))
+    print("  Left: " .. choiceText(setting("controllerLeftChannel")))
   else
     print("|cff69ccf0ForeverVoice|r")
-    print("/fv setup - controller mapping")
+    print("/fv setup - controller + channel onboarding")
+    print("/fv slots - show current channel slots")
     print("/fv move - move status icon")
-    print("HUD state comes from the helper; controller capture only saves mappings.")
   end
 end
 
+-- Events ---------------------------------------------------------------------
 local events = CreateFrame("Frame")
 events:RegisterEvent("PLAYER_LOGIN")
 events:RegisterEvent("PLAYER_REGEN_ENABLED")
+events:RegisterEvent("GROUP_ROSTER_UPDATE")
+events:RegisterEvent("PLAYER_GUILD_UPDATE")
 events:SetScript("OnEvent", function(_, event)
   if event == "PLAYER_LOGIN" then
     state = "idle"
     preview = false
     applyVisualState()
     syncRecordingOverrides()
-    print("|cff69ccf0ForeverVoice|r loaded. /fv setup for controller mapping.")
+    C_Timer.After(1.0, function()
+      if not ForeverVoiceDB.firstRunComplete then
+        refreshSetup()
+        setup:Show()
+      end
+    end)
+    print("|cff69ccf0ForeverVoice|r loaded. /fv setup to configure controller and channel slots.")
   elseif event == "PLAYER_REGEN_ENABLED" and overrideDeferred then
     syncRecordingOverrides()
+  elseif setup:IsShown() then
+    refreshSetup()
   end
 end)
