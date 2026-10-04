@@ -2,7 +2,7 @@
 ## Title: ForeverVoice
 ## Notes: Controller-first local speech-to-text chat for WoW Forever
 ## Author: Michael Watts
-## Version: 0.3.0
+## Version: 0.3.1
 ## SavedVariables: ForeverVoiceDB
 
 ForeverVoice.lua
