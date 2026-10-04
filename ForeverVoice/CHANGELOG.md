@@ -1,6 +1,15 @@
 # Changelog
 
-## 0.3.0 — Release candidate
+## 0.3.1 — Beta
+
+- Added a proper Windows uninstall entry under **Settings → Apps → Installed apps**.
+- Setup now copies an installed uninstaller to `%LOCALAPPDATA%\ForeverVoice`.
+- Added **Uninstall ForeverVoice** to the Setup app when an installation is detected.
+- Uninstall removes the helper, saved microphone/config settings, Windows Startup entry, and the WoW addon.
+- Setup now saves the WoW installation path so uninstall removes the correct addon folder.
+- Setup can be run again to install/update an existing ForeverVoice installation.
+
+## 0.3.0 — Beta
 
 - Added controller-first Start / Send flow.
 - Added recording-only channel selection.
@@ -14,7 +23,7 @@
 - Added persistent microphone selection.
 - Added Windows Startup integration.
 - Added standalone `ForeverVoiceHelper.exe` build path.
-- Added release ZIP and SHA256 packaging script.
+- Added one-click Windows Setup EXE and SHA256 release packaging.
 
 ### Known limitation
 
