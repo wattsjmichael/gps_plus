@@ -23,9 +23,7 @@ end
 
 local state = "idle"
 local channel = "general"
-local activeChannel = nil
 local preview = false
-local modifierHeld = false
 local captureTarget = nil
 
 local CHANNELS = {
@@ -107,8 +105,7 @@ fade:SetDuration(0.55)
 fade:SetSmoothing("IN_OUT")
 
 local function applyVisualState()
-  local shown = activeChannel or channel
-  local info = CHANNELS[shown] or CHANNELS.general
+  local info = CHANNELS[channel] or CHANNELS.general
   icon.badge.text:SetText(info.label)
 
   if state == "recording" then
@@ -135,30 +132,48 @@ local function applyVisualState()
   end
 end
 
-function ForeverVoice_Toggle()
-  if state == "idle" then
-    preview = false
-    activeChannel = channel
-    state = "recording"
-  elseif state == "recording" then
-    state = "transcribing"
-    C_Timer.After(8, function()
-      if state == "transcribing" then
-        state = "idle"
-        activeChannel = nil
-        applyVisualState()
-      end
-    end)
-  end
-  applyVisualState()
-end
+-- Helper -> addon bridge ------------------------------------------------------
+-- The helper owns the real recording state. It sends hidden F20 combinations:
+-- Ctrl=General recording, Shift=Trade, Alt=Party, Ctrl+Shift=Guild,
+-- Ctrl+Alt=Say, Shift+Alt=Transcribing, Ctrl+Shift+Alt=Idle.
+local bridge = CreateFrame("Frame", "ForeverVoiceBridgeObserver", UIParent)
+bridge:SetSize(1, 1)
+bridge:SetPoint("CENTER")
+bridge:EnableKeyboard(true)
+bridge:SetPropagateKeyboardInput(true)
+bridge:Show()
 
-function ForeverVoice_SelectChannel(which)
-  if state ~= "recording" or not CHANNELS[which] then return end
-  channel = which
-  activeChannel = which
+bridge:SetScript("OnKeyDown", function(_, key)
+  if key ~= "F20" then return end
+
+  local ctrl = IsControlKeyDown()
+  local shift = IsShiftKeyDown()
+  local alt = IsAltKeyDown()
+
+  if ctrl and shift and alt then
+    state = "idle"
+  elseif shift and alt and not ctrl then
+    state = "transcribing"
+  elseif ctrl and shift and not alt then
+    state = "recording"
+    channel = "guild"
+  elseif ctrl and alt and not shift then
+    state = "recording"
+    channel = "say"
+  elseif ctrl and not shift and not alt then
+    state = "recording"
+    channel = "general"
+  elseif shift and not ctrl and not alt then
+    state = "recording"
+    channel = "trade"
+  elseif alt and not ctrl and not shift then
+    state = "recording"
+    channel = "party"
+  end
+
+  preview = false
   applyVisualState()
-end
+end)
 
 -- Controller setup panel ------------------------------------------------------
 local setup = CreateFrame("Frame", "ForeverVoiceSetupFrame", UIParent, "BackdropTemplate")
@@ -185,7 +200,7 @@ setup.title:SetText("ForeverVoice Controller")
 setup.help = setup:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 setup.help:SetPoint("TOP", setup.title, "BOTTOM", 0, -8)
 setup.help:SetWidth(340)
-setup.help:SetText("Outside recording, only the Voice button is active. While recording, hold the modifier + D-pad to change channels.")
+setup.help:SetText("The helper owns recording. The addon only saves controller mappings and displays helper status.")
 
 local function makeLabel(text, y)
   local fs = setup:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -230,81 +245,18 @@ close:SetPoint("RIGHT", save, "LEFT", -8, 0)
 close:SetText("Close")
 close:SetScript("OnClick", function() setup:Hide() end)
 
--- Controller observer --------------------------------------------------------
-local observer = CreateFrame("Frame", "ForeverVoiceControllerObserver", UIParent)
-observer:EnableGamePadButton(true)
-observer:SetPropagateKeyboardInput(true)
-observer:Show()
+-- This observer is ONLY for mapping capture now. It never changes recording
+-- state or channels; the helper is authoritative.
+local controllerCapture = CreateFrame("Frame", "ForeverVoiceControllerCapture", UIParent)
+controllerCapture:EnableGamePadButton(true)
+controllerCapture:SetPropagateKeyboardInput(true)
+controllerCapture:Show()
 
-observer:SetScript("OnGamePadButtonDown", function(_, button)
-  if captureTarget then
-    -- Triggers are reported separately on some clients, but when WoW provides
-    -- them as PAD buttons we can capture them here too.
-    ForeverVoiceDB[captureTarget.key] = button
-    captureTarget.button:SetText(button)
-    captureTarget = nil
-    return
-  end
-
-  if button == ForeverVoiceDB.controllerModifier then
-    modifierHeld = true
-    return
-  end
-
-  if state == "idle" then
-    if button == ForeverVoiceDB.controllerToggle and not modifierHeld then
-      ForeverVoice_Toggle()
-    end
-    return
-  end
-
-  if state ~= "recording" then return end
-
-  if modifierHeld then
-    if button == ForeverVoiceDB.controllerUpButton then
-      ForeverVoice_SelectChannel(ForeverVoiceDB.controllerUpChannel)
-    elseif button == ForeverVoiceDB.controllerRightButton then
-      ForeverVoice_SelectChannel(ForeverVoiceDB.controllerRightChannel)
-    elseif button == ForeverVoiceDB.controllerDownButton then
-      ForeverVoice_SelectChannel(ForeverVoiceDB.controllerDownChannel)
-    elseif button == ForeverVoiceDB.controllerLeftButton then
-      ForeverVoice_SelectChannel(ForeverVoiceDB.controllerLeftChannel)
-    end
-    return
-  end
-
-  if button == ForeverVoiceDB.controllerToggle then
-    ForeverVoice_Toggle()
-  end
-end)
-
-observer:SetScript("OnGamePadButtonUp", function(_, button)
-  if button == ForeverVoiceDB.controllerModifier then
-    modifierHeld = false
-  end
-end)
-
--- Keyboard bridge remains as fallback / testing.
-local keyboard = CreateFrame("Frame", "ForeverVoiceKeyboardObserver", UIParent)
-keyboard:SetSize(1, 1)
-keyboard:SetPoint("CENTER")
-keyboard:EnableKeyboard(true)
-keyboard:SetPropagateKeyboardInput(true)
-keyboard:Show()
-keyboard:SetScript("OnKeyDown", function(_, key)
-  if key == "F13" then
-    ForeverVoice_Toggle()
-  elseif state == "recording" and key == "F15" then
-    ForeverVoice_SelectChannel("general")
-  elseif state == "recording" and key == "F16" then
-    ForeverVoice_SelectChannel("trade")
-  elseif state == "recording" and key == "F17" then
-    ForeverVoice_SelectChannel("party")
-  elseif state == "recording" and key == "F18" then
-    ForeverVoice_SelectChannel("guild")
-  elseif state == "recording" and key == "F19" then
-    ForeverVoice_SelectChannel("say")
-  end
+controllerCapture:SetScript("OnGamePadButtonDown", function(_, button)
+  if not captureTarget then return end
+  ForeverVoiceDB[captureTarget.key] = button
+  captureTarget.button:SetText(button)
+  captureTarget = nil
 end)
 
 SLASH_FOREVERVOICE1 = "/fv"
@@ -332,13 +284,14 @@ SlashCmdList.FOREVERVOICE = function(msg)
     print("|cff69ccf0ForeverVoice|r")
     print("/fv setup - controller mapping")
     print("/fv move - move status icon")
-    print("Voice button starts/sends. Channel controls only work while recording.")
+    print("HUD state comes from the helper; controller capture only saves mappings.")
   end
 end
 
 local events = CreateFrame("Frame")
 events:RegisterEvent("PLAYER_LOGIN")
 events:SetScript("OnEvent", function()
+  state = "idle"
   applyVisualState()
   print("|cff69ccf0ForeverVoice|r loaded. /fv setup for controller mapping.")
 end)
