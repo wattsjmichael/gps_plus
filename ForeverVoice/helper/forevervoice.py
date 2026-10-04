@@ -10,22 +10,25 @@ from pynput.keyboard import Controller, Key, Listener
 SYSTEM = platform.system()
 SAMPLE_RATE = 16000
 
-KEYS = {
+SPECIAL_KEYS = {
     "INSERT": Key.insert,
-    "PAGEUP": Key.page_up,
-    "PAGEDOWN": Key.page_down,
+    "DELETE": Key.delete,
     "HOME": Key.home,
     "END": Key.end,
-    "DELETE": Key.delete,
+    "PAGEUP": Key.page_up,
+    "PAGEDOWN": Key.page_down,
+    "PAUSE": Key.pause,
+    "SCROLLLOCK": Key.scroll_lock,
+    **{f"F{i}": getattr(Key, f"f{i}") for i in range(1, 21) if hasattr(Key, f"f{i}")},
 }
 
-CHANNEL_KEYS = {
-    Key.page_up: ("general", "/1 "),
-    Key.delete: ("trade", "/2 "),
-    Key.end: ("party", "/p "),
-    Key.page_down: ("guild", "/g "),
-    Key.home: ("say", "/s "),
-}
+def parse_key(name: str):
+    name = name.upper()
+    if name in SPECIAL_KEYS:
+        return SPECIAL_KEYS[name]
+    if len(name) == 1:
+        return name.lower()
+    raise ValueError(f"Unsupported key: {name}")
 
 def log(s: str):
     print(f"[{time.strftime('%H:%M:%S')}] {s}", flush=True)
@@ -90,31 +93,40 @@ class App:
         self.lock = threading.Lock()
         self.last_toggle = 0.0
 
-    def toggle(self):
+    def start_recording(self):
         with self.lock:
             now = time.monotonic()
-            if now - self.last_toggle < 0.25:
+            if now - self.last_toggle < 0.25 or self.state != "idle":
                 return
             self.last_toggle = now
-            if self.state == "idle":
-                try:
-                    self.recorder.start()
-                except Exception as e:
-                    log(f"Mic failed: {e}")
-                    return
-                self.active_channel = self.channel
-                self.active_prefix = self.prefix
-                self.state = "recording"
-                log(f"Recording... channel={self.active_channel} destination={self.active_prefix.strip()}")
-            elif self.state == "recording":
-                audio = self.recorder.stop()
-                self.state = "transcribing"
-                log("Stopped. Transcribing...")
-                threading.Thread(target=self.finish, args=(audio,), daemon=True).start()
+            try:
+                self.recorder.start()
+            except Exception as e:
+                log(f"Mic failed: {e}")
+                return
+            self.active_channel = self.channel
+            self.active_prefix = self.prefix
+            self.state = "recording"
+            log(f"Recording... channel={self.active_channel} destination={self.active_prefix.strip()}")
+
+    def send_recording(self):
+        with self.lock:
+            now = time.monotonic()
+            if now - self.last_toggle < 0.25 or self.state != "recording":
+                return
+            self.last_toggle = now
+            audio = self.recorder.stop()
+            self.state = "transcribing"
+            log(f"Send pressed. destination={self.active_prefix.strip()} Transcribing...")
+            threading.Thread(target=self.finish, args=(audio,), daemon=True).start()
 
     def select_channel(self, name, prefix):
         self.channel, self.prefix = name, prefix
-        if self.state in ("recording", "transcribing"):
+        if self.state == "recording":
+            self.active_channel = name
+            self.active_prefix = prefix
+            log(f"Recording destination changed: {name} ({prefix.strip()})")
+        elif self.state == "transcribing":
             log(f"Channel queued for next message: {name}")
         else:
             log(f"Channel: {name}")
@@ -167,31 +179,67 @@ class App:
         self.keyboard.press(Key.enter); self.keyboard.release(Key.enter)
 
     def run(self):
-        record_key = KEYS[self.args.record_key.upper()]
+        bindings = {
+            "start": parse_key(self.args.start_key),
+            "send": parse_key(self.args.send_key),
+            "general": parse_key(self.args.general_key),
+            "trade": parse_key(self.args.trade_key),
+            "party": parse_key(self.args.party_key),
+            "guild": parse_key(self.args.guild_key),
+            "say": parse_key(self.args.say_key),
+        }
+        channels = {
+            bindings["general"]: ("general", "/1 "),
+            bindings["trade"]: ("trade", "/2 "),
+            bindings["party"]: ("party", "/p "),
+            bindings["guild"]: ("guild", "/g "),
+            bindings["say"]: ("say", "/s "),
+        }
+
         log("ForeverVoice ready")
         log(f"Mic: {sd.query_devices(self.args.input_device, 'input')['name'] if self.args.input_device is not None else sd.query_devices(kind='input')['name']}")
-        log(f"Record key: {self.args.record_key}")
-        log("Channels: PageUp=General, Delete=Trade, End=Party, PageDown=Guild, Home=Say")
+        log(f"Start={self.args.start_key} Send={self.args.send_key}")
+        log(
+            f"Channels: General={self.args.general_key}, Trade={self.args.trade_key}, "
+            f"Party={self.args.party_key}, Guild={self.args.guild_key}, Say={self.args.say_key}"
+        )
 
         def on_press(key):
-            if key == record_key:
-                self.toggle()
+            if key == bindings["start"]:
+                self.start_recording()
                 return
-            if key in CHANNEL_KEYS:
-                self.select_channel(*CHANNEL_KEYS[key])
+            if key == bindings["send"]:
+                self.send_recording()
+                return
+            if key in channels:
+                self.select_channel(*channels[key])
 
         with Listener(on_press=on_press) as listener:
             listener.join()
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--record-key", default="INSERT")
+    p.add_argument("--start-key", default="F13")
+    p.add_argument("--send-key", default="F14")
+    p.add_argument("--general-key", default="F15")
+    p.add_argument("--trade-key", default="F16")
+    p.add_argument("--party-key", default="F17")
+    p.add_argument("--guild-key", default="F18")
+    p.add_argument("--say-key", default="F19")
     p.add_argument("--input-device", type=int)
     p.add_argument("--model", default="base")
     p.add_argument("--any-app", action="store_true")
     args = p.parse_args()
-    if args.record_key.upper() not in KEYS:
-        raise SystemExit("record key must be INSERT, PAGEUP, PAGEDOWN, HOME, END, or DELETE")
+
+    try:
+        for name in (
+            args.start_key, args.send_key, args.general_key, args.trade_key,
+            args.party_key, args.guild_key, args.say_key
+        ):
+            parse_key(name)
+    except ValueError as e:
+        raise SystemExit(str(e))
+
     App(args).run()
 
 if __name__ == "__main__":
