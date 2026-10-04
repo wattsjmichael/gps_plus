@@ -265,6 +265,32 @@ class App:
         self.settings = ForeverVoiceSettings(Path(args.wow_dir))
         self.settings.refresh()
 
+    def bridge_signal(self, state, channel=None):
+        # Hidden helper -> addon status bridge. F20 is never used as a user
+        # binding; modifier combinations encode state/channel.
+        combos = {
+            ("recording", "general"): (Key.ctrl, Key.f20),
+            ("recording", "trade"): (Key.shift, Key.f20),
+            ("recording", "party"): (Key.alt, Key.f20),
+            ("recording", "guild"): (Key.ctrl, Key.shift, Key.f20),
+            ("recording", "say"): (Key.ctrl, Key.alt, Key.f20),
+            ("transcribing", None): (Key.shift, Key.alt, Key.f20),
+            ("idle", None): (Key.ctrl, Key.shift, Key.alt, Key.f20),
+        }
+        keys = combos.get((state, channel)) or combos.get((state, None))
+        if not keys:
+            return
+        modifiers, final = keys[:-1], keys[-1]
+        try:
+            for key in modifiers:
+                self.keyboard.press(key)
+            self.keyboard.press(final)
+            self.keyboard.release(final)
+            for key in reversed(modifiers):
+                self.keyboard.release(key)
+        except Exception as e:
+            log(f"HUD bridge failed: {e}")
+
     def start_recording(self):
         with self.lock:
             now = time.monotonic()
@@ -280,6 +306,7 @@ class App:
             self.active_prefix = self.prefix
             self.state = "recording"
             log(f"Recording... channel={self.active_channel} destination={self.active_prefix.strip()}")
+            self.bridge_signal("recording", self.active_channel)
 
     def send_recording(self):
         with self.lock:
@@ -290,6 +317,7 @@ class App:
             audio = self.recorder.stop()
             self.state = "transcribing"
             log(f"Send pressed. destination={self.active_prefix.strip()} Transcribing...")
+            self.bridge_signal("transcribing")
             threading.Thread(target=self.finish, args=(audio,), daemon=True).start()
 
     def toggle_voice(self):
@@ -307,6 +335,7 @@ class App:
             self.active_channel = name
             self.active_prefix = prefix
             log(f"Recording destination changed: {name} ({prefix.strip()})")
+            self.bridge_signal("recording", name)
         elif self.state == "transcribing":
             log(f"Channel queued for next message: {name}")
         else:
@@ -364,6 +393,7 @@ class App:
             self.state = "idle"
             self.active_channel = None
             self.active_prefix = None
+            self.bridge_signal("idle")
 
     def type_text(self, text):
         for ch in text:
