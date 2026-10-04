@@ -133,9 +133,8 @@ local function applyVisualState()
 end
 
 -- Helper -> addon bridge ------------------------------------------------------
--- The helper is authoritative. Dedicated keys are status signals only:
--- F13 General, F14 Trade, F15 Party, F16 Guild, F17 Say,
--- F18 Transcribing, F19 Idle.
+-- Helper owns the real state. Ctrl+Alt+Shift+F5..F11 are reserved status
+-- signals because WoW reliably exposes these ordinary function keys.
 local bridge = CreateFrame("Frame", "ForeverVoiceBridgeObserver", UIParent)
 bridge:SetSize(1, 1)
 bridge:SetPoint("CENTER")
@@ -143,29 +142,42 @@ bridge:EnableKeyboard(true)
 bridge:SetPropagateKeyboardInput(true)
 bridge:Show()
 
+local function consumeBridgeKey()
+  bridge:SetPropagateKeyboardInput(false)
+  C_Timer.After(0, function()
+    bridge:SetPropagateKeyboardInput(true)
+  end)
+end
+
 bridge:SetScript("OnKeyDown", function(_, key)
-  if key == "F13" then
+  if not (IsControlKeyDown() and IsAltKeyDown() and IsShiftKeyDown()) then
+    return
+  end
+
+  if key == "F5" then
     state = "recording"
     channel = "general"
-  elseif key == "F14" then
+  elseif key == "F6" then
     state = "recording"
     channel = "trade"
-  elseif key == "F15" then
+  elseif key == "F7" then
     state = "recording"
     channel = "party"
-  elseif key == "F16" then
+  elseif key == "F8" then
     state = "recording"
     channel = "guild"
-  elseif key == "F17" then
+  elseif key == "F9" then
     state = "recording"
     channel = "say"
-  elseif key == "F18" then
+  elseif key == "F10" then
     state = "transcribing"
-  elseif key == "F19" then
+  elseif key == "F11" then
     state = "idle"
   else
     return
   end
+
+  consumeBridgeKey()
   preview = false
   applyVisualState()
 end)
