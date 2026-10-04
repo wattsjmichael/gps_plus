@@ -5,6 +5,9 @@
   <Binding name="FOREVERVOICE_GENERAL" category="ADDONS" header="FOREVERVOICE">
     ForeverVoice_SelectChannel("general")
   </Binding>
+  <Binding name="FOREVERVOICE_TRADE" category="ADDONS" header="FOREVERVOICE">
+    ForeverVoice_SelectChannel("trade")
+  </Binding>
   <Binding name="FOREVERVOICE_PARTY" category="ADDONS" header="FOREVERVOICE">
     ForeverVoice_SelectChannel("party")
   </Binding>
