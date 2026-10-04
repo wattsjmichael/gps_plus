@@ -9,7 +9,7 @@
 ## Download
 
 **Latest beta:**  
-https://github.com/wattsjmichael/gps_plus/releases/latest
+https://github.com/wattsjmichael/gps_plus/releases
 
 Download:
 
