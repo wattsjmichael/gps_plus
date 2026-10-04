@@ -10,22 +10,10 @@ from pathlib import Path
 import numpy as np
 import sounddevice as sd
 from faster_whisper import WhisperModel
-from pynput.keyboard import Controller, Key, Listener
+from pynput.keyboard import Controller, Key
 
 SYSTEM = platform.system()
 SAMPLE_RATE = 16000
-
-SPECIAL_KEYS = {
-    "INSERT": Key.insert,
-    "DELETE": Key.delete,
-    "HOME": Key.home,
-    "END": Key.end,
-    "PAGEUP": Key.page_up,
-    "PAGEDOWN": Key.page_down,
-    "PAUSE": Key.pause,
-    "SCROLLLOCK": Key.scroll_lock,
-    **{f"F{i}": getattr(Key, f"f{i}") for i in range(1, 21) if hasattr(Key, f"f{i}")},
-}
 
 CHANNEL_PREFIXES = {
     "general": "/1 ",
@@ -50,14 +38,6 @@ DEFAULT_CONTROLLER = {
 
 def log(s: str):
     print(f"[{time.strftime('%H:%M:%S')}] {s}", flush=True)
-
-def parse_key(name: str):
-    name = name.upper()
-    if name in SPECIAL_KEYS:
-        return SPECIAL_KEYS[name]
-    if len(name) == 1:
-        return name.lower()
-    raise ValueError(f"Unsupported key: {name}")
 
 def default_wow_dir() -> Path:
     candidates = [
@@ -154,8 +134,12 @@ class Recorder:
     def start(self):
         self.chunks = []
         self.stream = sd.InputStream(
-            samplerate=SAMPLE_RATE, channels=1, dtype="float32",
-            blocksize=1024, device=self.device, callback=self._cb
+            samplerate=SAMPLE_RATE,
+            channels=1,
+            dtype="float32",
+            blocksize=1024,
+            device=self.device,
+            callback=self._cb,
         )
         self.stream.start()
 
@@ -169,8 +153,6 @@ class Recorder:
             self.chunks = []
         return out
 
-# Standard Windows XInput controls. This deliberately avoids Elite paddle magic:
-# paddles can still be used through the keyboard bridge if desired.
 XINPUT_BITS = {
     "PADDUP": 0x0001,
     "PADDDOWN": 0x0002,
@@ -200,7 +182,10 @@ class XINPUT_GAMEPAD(ctypes.Structure):
     ]
 
 class XINPUT_STATE(ctypes.Structure):
-    _fields_ = [("dwPacketNumber", ctypes.c_ulong), ("Gamepad", XINPUT_GAMEPAD)]
+    _fields_ = [
+        ("dwPacketNumber", ctypes.c_ulong),
+        ("Gamepad", XINPUT_GAMEPAD),
+    ]
 
 class XInputWatcher:
     def __init__(self, app):
@@ -230,15 +215,197 @@ class XInputWatcher:
         return pressed
 
     def run(self):
+        if self.xinput is None:
+            log("Direct controller: XInput unavailable")
+            return
+        log("Direct controller: XInput enabled")
+        while True:
+            current = self.controls()
+            downs = current - self.previous
+            self.previous = current
+
+            modifier = self.app.settings.controller["modifier"]
+            modifier_held = modifier in current
+
+            for button in downs:
+                self.app.on_controller_press(button, modifier_held)
+
+            if self.app.settings.refresh():
+                c = self.app.settings.controller
+                log(f"Controller mapping updated: voice={c['toggle']} modifier={c['modifier']}")
+
+            time.sleep(0.01)
+
+class App:
+    def __init__(self, args):
+        self.args = args
+        self.state = "idle"
+        self.channel = "general"
+        self.prefix = "/1 "
+        self.active_channel = None
+        self.active_prefix = None
+        self.recorder = Recorder(args.input_device)
+        self.keyboard = Controller()
+        self.model = WhisperModel(args.model, device="cpu", compute_type="int8")
+        self.lock = threading.Lock()
+        self.last_toggle = 0.0
+        self.settings = ForeverVoiceSettings(Path(args.wow_dir))
+        self.settings.refresh()
+
+    def bridge_signal(self, state, channel=None):
+        signals = {
+            ("recording", "general"): Key.f13,
+            ("recording", "trade"): Key.f14,
+            ("recording", "party"): Key.f15,
+            ("recording", "guild"): Key.f16,
+            ("recording", "say"): Key.f17,
+            ("transcribing", None): Key.f18,
+            ("idle", None): Key.f19,
+        }
+        key = signals.get((state, channel)) or signals.get((state, None))
+        if key is None:
+            return
+        self.keyboard.press(key)
+        time.sleep(0.02)
+        self.keyboard.release(key)
+        log(f"HUD: {state}{'/' + channel if channel else ''}")
+
+    def start_recording(self):
+        with self.lock:
+            now = time.monotonic()
+            if now - self.last_toggle < 0.25 or self.state != "idle":
+                return
+            self.last_toggle = now
+            try:
+                self.recorder.start()
+            except Exception as e:
+                log(f"Mic failed: {e}")
+                return
+
+            self.active_channel = self.channel
+            self.active_prefix = self.prefix
+            self.state = "recording"
+            log(f"Recording... channel={self.active_channel} destination={self.active_prefix.strip()}")
+            self.bridge_signal("recording", self.active_channel)
+
+    def send_recording(self):
+        with self.lock:
+            now = time.monotonic()
+            if now - self.last_toggle < 0.25 or self.state != "recording":
+                return
+            self.last_toggle = now
+            audio = self.recorder.stop()
+            self.state = "transcribing"
+            log(f"Send pressed. destination={self.active_prefix.strip()} Transcribing...")
+            self.bridge_signal("transcribing")
+            threading.Thread(target=self.finish, args=(audio,), daemon=True).start()
+
+    def select_channel(self, name):
+        prefix = CHANNEL_PREFIXES.get(name)
+        if not prefix:
+            return
+        self.channel = name
+        self.prefix = prefix
+        if self.state == "recording":
+            self.active_channel = name
+            self.active_prefix = prefix
+            log(f"Recording destination changed: {name} ({prefix.strip()})")
+            self.bridge_signal("recording", name)
+
+    def on_controller_press(self, button, modifier_held):
+        c = self.settings.controller
+
+        if self.state == "idle":
+            if button == c["toggle"] and not modifier_held:
+                self.start_recording()
+            return
+
+        if self.state != "recording":
+            return
+
+        if modifier_held:
+            channel_buttons = {
+                c["up_button"]: c["up_channel"],
+                c["right_button"]: c["right_channel"],
+                c["down_button"]: c["down_channel"],
+                c["left_button"]: c["left_channel"],
+            }
+            channel = channel_buttons.get(button)
+            if channel:
+                self.select_channel(channel)
+            return
+
+        if button == c["toggle"]:
+            self.send_recording()
+
+    def finish(self, audio):
+        try:
+            segs, _ = self.model.transcribe(
+                audio,
+                beam_size=1,
+                best_of=1,
+                vad_filter=True,
+                condition_on_previous_text=False,
+                without_timestamps=True,
+            )
+            text = re.sub(r"\s+", " ", " ".join(s.text.strip() for s in segs)).strip()
+            if not text:
+                log("Nothing transcribed")
+                return
+
+            log(f"Transcript: {text}")
+
+            if not wow_frontmost() and not self.args.any_app:
+                log(f"WoW is not frontmost ({frontmost_app_name()}); not typing")
+                return
+
+            outgoing = (self.active_prefix or self.prefix) + text
+            log(f"Sending: {outgoing}")
+            self.deliver(outgoing)
+            log(f"Sent to {self.active_channel or self.channel}")
+        except Exception as e:
+            log(f"Transcription/send failed: {e}")
+        finally:
+            self.state = "idle"
+            self.active_channel = None
+            self.active_prefix = None
+            self.bridge_signal("idle")
+
+    def type_text(self, text):
+        for ch in text:
+            self.keyboard.press(ch)
+            self.keyboard.release(ch)
+            time.sleep(0.002)
+
+    def deliver(self, text):
+        self.keyboard.press(Key.enter)
+        self.keyboard.release(Key.enter)
+        time.sleep(0.12)
+
+        self.type_text(text)
+        time.sleep(0.04)
+
+        self.keyboard.press(Key.enter)
+        self.keyboard.release(Key.enter)
+
+        time.sleep(0.15)
+        close_command = "/click InputFunctionBindingButton_PAD2 LeftButton 1"
+        self.type_text(close_command)
+        time.sleep(0.03)
+
+        self.keyboard.press(Key.enter)
+        self.keyboard.release(Key.enter)
+
+    def run(self):
         c = self.settings.controller
         log("ForeverVoice ready")
-        log(f"Mic: {sd.query_devices(self.args.input_device, 'input')['name'] if self.args.input_device is not None else sd.query_devices(kind='input')['name']}")
+        mic = sd.query_devices(self.args.input_device, "input")["name"] if self.args.input_device is not None else sd.query_devices(kind="input")["name"]
+        log(f"Mic: {mic}")
         log(f"Controller: voice={c['toggle']} modifier={c['modifier']}")
 
         watcher = XInputWatcher(self)
         threading.Thread(target=watcher.run, daemon=True).start()
 
-        # Keep the process alive; controller input is handled by XInputWatcher.
         while True:
             time.sleep(1.0)
 
