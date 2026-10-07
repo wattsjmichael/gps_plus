@@ -1,7 +1,4 @@
 local ADDON_NAME = ...
-BINDING_HEADER_FOREVERVOICE = "ForeverVoice"
-BINDING_NAME_FOREVERVOICE_TOGGLE = "Voice: Start / Send"
-
 ForeverVoiceDB = ForeverVoiceDB or {}
 
 local DEFAULTS = {
@@ -212,13 +209,6 @@ bridge:EnableKeyboard(true)
 bridge:SetPropagateKeyboardInput(true)
 bridge:Show()
 
-local function consumeBridgeKey()
-  bridge:SetPropagateKeyboardInput(false)
-  C_Timer.After(0, function()
-    bridge:SetPropagateKeyboardInput(true)
-  end)
-end
-
 bridge:SetScript("OnKeyDown", function(_, key)
   if not (IsControlKeyDown() and IsAltKeyDown() and IsShiftKeyDown()) then return end
 
@@ -235,7 +225,6 @@ bridge:SetScript("OnKeyDown", function(_, key)
   elseif key == "PAGEDOWN" then state = "idle"
   else return end
 
-  consumeBridgeKey()
   preview = false
   applyVisualState()
   syncRecordingOverrides()
