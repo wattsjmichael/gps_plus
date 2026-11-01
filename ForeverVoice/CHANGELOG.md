@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.4.0 — Silent Startup & Diagnostics (unreleased)
+
+- Use a per-user Windows Run entry and windowless helper; migrate the known
+  ForeverVoice Startup `.cmd` and `.lnk` entries without touching other entries.
+- Add tray Open, Start with Windows, and Exit; duplicate launches open the existing
+  diagnostics window. Shutdown closes audio and waits for owned worker threads.
+- Add standalone microphone, Whisper, XInput slot 0, and WoW process diagnostics.
+- Add a three-second microphone transcription test that never sends game input.
+- Keep rotating application error logs and native output in the configuration folder.
+- Preserve controller bindings, addon/HUD bridge, and chat transcription behavior.
+- Validation: 11 automated tests, Python compilation, and diff checks passed on Linux.
+  Windows packaging, physical devices, sign-in startup, and in-game integration still
+  require manual verification. No release created.
+
 ## 0.3.1 — Beta
 
 - Added a proper Windows uninstall entry under **Settings → Apps → Installed apps**.

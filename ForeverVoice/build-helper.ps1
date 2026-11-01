@@ -14,7 +14,7 @@ if (-not (Test-Path ".venv")) {
 if (Test-Path "build") { Remove-Item -Recurse -Force "build" }
 if (Test-Path "dist") { Remove-Item -Recurse -Force "dist" }
 
-.\.venv\Scripts\pyinstaller.exe --noconfirm --clean --name ForeverVoiceHelper --onefile --console --collect-all faster_whisper --collect-all ctranslate2 --collect-all sounddevice .\forevervoice.py
+.\.venv\Scripts\pyinstaller.exe --noconfirm --clean --name ForeverVoiceHelper --onefile --noconsole --collect-all faster_whisper --collect-all ctranslate2 --collect-all sounddevice .\forevervoice.py
 
 Pop-Location
 Write-Host ""

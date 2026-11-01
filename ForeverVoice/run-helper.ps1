@@ -3,9 +3,11 @@ $Root = $PSScriptRoot
 $Exe = Join-Path $Root "helper\dist\ForeverVoiceHelper.exe"
 
 if (Test-Path $Exe) {
-  & $Exe @args
-  exit $LASTEXITCODE
+  $Launch = @{ FilePath = $Exe }
+  if ($args.Count) { $Launch.ArgumentList = ($args | ForEach-Object { '"' + ($_ -replace '"', '\"') + '"' }) }
+  Start-Process @Launch
+  exit
 }
 
 Set-Location (Join-Path $Root "helper")
-.\.venv\Scripts\python.exe .\forevervoice.py @args
+& .\.venv\Scripts\pythonw.exe .\forevervoice.py @args

@@ -26,25 +26,12 @@ if (-not $UseExe) {
   Pop-Location
 }
 
-$StartupDir = [Environment]::GetFolderPath("Startup")
-$ShortcutPath = Join-Path $StartupDir "ForeverVoice Helper.lnk"
-$Shell = New-Object -ComObject WScript.Shell
-$Shortcut = $Shell.CreateShortcut($ShortcutPath)
-
+$Python = Join-Path $Root "helper\.venv\Scripts\python.exe"
 if ($UseExe) {
-  $Shortcut.TargetPath = $Exe
-  $Shortcut.Arguments = ""
-  $Shortcut.WorkingDirectory = Split-Path $Exe
+  Start-Process -FilePath $Exe -ArgumentList "--enable-startup" -Wait
 } else {
-  $PowerShell = (Get-Command powershell.exe).Source
-  $RunHelper = Join-Path $Root "run-helper.ps1"
-  $Shortcut.TargetPath = $PowerShell
-  $Shortcut.Arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$RunHelper`""
-  $Shortcut.WorkingDirectory = $Root
+  & $Python (Join-Path $Root "helper\forevervoice.py") --enable-startup
 }
-
-$Shortcut.Description = "ForeverVoice speech-to-text helper"
-$Shortcut.Save()
 
 Write-Host ""
 Write-Host "ForeverVoice installed to: $Dest"

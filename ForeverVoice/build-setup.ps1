@@ -31,7 +31,7 @@ $Python = Join-Path $Root "helper\.venv\Scripts\python.exe"
 if (Test-Path "build") { Remove-Item -Recurse -Force "build" }
 if (Test-Path "dist") { Remove-Item -Recurse -Force "dist" }
 
-& (Join-Path $Root "helper\.venv\Scripts\pyinstaller.exe") --noconfirm --clean --noconsole --onefile --name ForeverVoiceSetup --add-data "$Payload;payload" --collect-all sounddevice .\forevervoice_setup.py
+& (Join-Path $Root "helper\.venv\Scripts\pyinstaller.exe") --noconfirm --clean --noconsole --onefile --paths "$HelperDir" --name ForeverVoiceSetup --add-data "$Payload;payload" --collect-all sounddevice .\forevervoice_setup.py
 Pop-Location
 
 Write-Host ""

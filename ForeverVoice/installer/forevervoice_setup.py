@@ -12,9 +12,10 @@ from tkinter import filedialog, messagebox, ttk
 import winreg
 
 import sounddevice as sd
+from fv_runtime import set_startup
 
 APP_NAME = "ForeverVoice"
-APP_VERSION = "0.3.1"
+APP_VERSION = "0.4.0"
 UNINSTALL_KEY = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\ForeverVoice"
 
 WOW_CANDIDATES = [
@@ -206,11 +207,7 @@ def uninstall_forevervoice(parent: tk.Misc | None = None, quiet: bool = False) -
 
     stop_helper()
 
-    startup_file = startup_dir() / "ForeverVoice Helper.cmd"
-    try:
-        startup_file.unlink()
-    except FileNotFoundError:
-        pass
+    set_startup(False)
 
     remove_addon()
     unregister_uninstaller()
@@ -395,22 +392,14 @@ class SetupApp:
                 }
             )
 
-            startup_file = startup_dir() / "ForeverVoice Helper.cmd"
-            if self.autostart.get():
-                self.set_status("Enabling Windows startup…")
-                startup_file.write_text(
-                    '@echo off\nstart "" "' + str(helper_dest) + '"\n',
-                    encoding="utf-8",
-                )
-            elif startup_file.exists():
-                startup_file.unlink()
+            set_startup(self.autostart.get(), [str(helper_dest)])
 
             register_uninstaller(setup_dest, target_dir)
 
             if self.launch_now.get():
                 self.set_status("Starting ForeverVoice Helper…")
                 subprocess.Popen(
-                    [str(helper_dest)],
+                    [str(helper_dest), "--background"],
                     cwd=str(target_dir),
                     creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                 )

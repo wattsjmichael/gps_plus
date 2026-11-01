@@ -68,3 +68,21 @@ ForeverVoice registers itself with Windows. Remove it from:
 You can also reopen `ForeverVoiceSetup.exe` and click **Uninstall ForeverVoice**.
 
 Uninstall removes the helper, saved microphone settings, Windows Startup entry, and the WoW addon folder.
+
+## v0.4.0 development (unreleased)
+
+Open the helper to view standalone diagnostics, even with WoW closed. Closing the
+window keeps the helper in the tray. Use tray **Open**, **Start with Windows**, or
+**Exit**. **Test Microphone** records three seconds and displays a transcription;
+it does not type into WoW. Whisper must finish loading before recording is enabled.
+A second launch opens the existing window rather than starting another helper.
+
+Startup uses `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\ForeverVoice`.
+The helper migrates the known `ForeverVoice Helper.cmd` and `.lnk` Startup entries
+on first launch. Exit disables no startup setting; the toggle controls the next sign-in.
+Logs: `%APPDATA%\ForeverVoice\forevervoice.log` (rotating application/errors) and
+`native.log` (native library output). Logs can contain transcripts; inspect before sharing.
+Exit stops controller polling and recording and waits for current model/transcription
+work to finish. No separate Whisper daemon or unrelated Python process is killed.
+
+Validation and Windows smoke-test steps: [docs/V0.4.0-VALIDATION.md](docs/V0.4.0-VALIDATION.md).

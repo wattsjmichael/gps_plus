@@ -2,6 +2,8 @@ from __future__ import annotations
 import argparse
 import ctypes
 import json
+import logging
+import os
 import platform
 import re
 import threading
@@ -41,7 +43,7 @@ DEFAULT_CONTROLLER = {
 }
 
 def log(s: str):
-    print(f"[{time.strftime('%H:%M:%S')}] {s}", flush=True)
+    logging.info(s)
 
 def default_wow_dir() -> Path:
     candidates = [
@@ -56,7 +58,7 @@ def default_wow_dir() -> Path:
 
 def appdata_dir() -> Path:
     if SYSTEM == "Windows":
-        base = Path.home() / "AppData" / "Roaming"
+        base = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"))
     else:
         base = Path.home() / ".config"
     p = base / "ForeverVoice"
@@ -174,13 +176,20 @@ class Recorder:
             samplerate=SAMPLE_RATE, channels=1, dtype="float32",
             blocksize=1024, device=self.device, callback=self._cb,
         )
-        self.stream.start()
+        try:
+            self.stream.start()
+        except Exception:
+            self.stream.close()
+            self.stream = None
+            raise
 
     def stop(self):
         if self.stream:
-            self.stream.stop()
-            self.stream.close()
-            self.stream = None
+            stream, self.stream = self.stream, None
+            try:
+                stream.stop()
+            finally:
+                stream.close()
         with self.lock:
             out = np.concatenate(self.chunks) if self.chunks else np.zeros(0, dtype="float32")
             self.chunks = []
@@ -208,6 +217,7 @@ class XInputWatcher:
         self.app = app
         self.xinput = None
         self.previous = set()
+        self.connected = False
         if SYSTEM == "Windows":
             for dll in ("xinput1_4.dll", "xinput1_3.dll", "xinput9_1_0.dll"):
                 try:
@@ -220,7 +230,8 @@ class XInputWatcher:
         if self.xinput is None:
             return set()
         state = XINPUT_STATE()
-        if self.xinput.XInputGetState(0, ctypes.byref(state)) != 0:
+        self.connected = self.xinput.XInputGetState(0, ctypes.byref(state)) == 0
+        if not self.connected:
             return set()
         gp = state.Gamepad
         pressed = {name for name, bit in XINPUT_BITS.items() if gp.wButtons & bit}
@@ -235,7 +246,7 @@ class XInputWatcher:
             log("Direct controller: XInput unavailable")
             return
         log("Direct controller: XInput enabled")
-        while True:
+        while not self.app.stopping.is_set():
             current = self.controls()
             downs = current - self.previous
             self.previous = current
@@ -258,6 +269,10 @@ class XInputWatcher:
 class App:
     def __init__(self, args):
         self.args = args
+        self.stopping = threading.Event()
+        self.model_status = "Loading"
+        self.model = None
+        self.workers = []
         self.state = "idle"
         self.channel = "general"
         self.prefix = "/1 "
@@ -273,14 +288,29 @@ class App:
         self.keyboard = Controller()
         log("Starting ForeverVoice Helper...")
         log(f"Loading Whisper model '{args.model}' on CPU...")
-        self.model = WhisperModel(args.model, device="cpu", compute_type="int8")
-        log("Whisper model loaded")
+
         self.lock = threading.Lock()
         self.last_toggle = 0.0
         self.settings = ForeverVoiceSettings(Path(args.wow_dir))
         self.settings.refresh()
 
+    def load_model(self):
+        try:
+            self.model = WhisperModel(self.args.model, device="cpu", compute_type="int8")
+            self.model_status = "Ready: " + self.args.model
+        except Exception as exc:
+            self.model_status = "Failed: " + str(exc)
+            logging.exception("Model load failed")
+
+    def worker(self, target, *args):
+        self.workers = [w for w in self.workers if w.is_alive()]
+        thread = threading.Thread(target=target, args=args)
+        self.workers.append(thread)
+        thread.start()
+
     def bridge_signal(self, state, channel=None):
+        if self.stopping.is_set():
+            return
         # Ctrl+Alt+Shift + ordinary keys are consumed by the addon.
         signals = {
             ("recording", "general"): Key.f5,
@@ -317,7 +347,7 @@ class App:
     def start_recording(self):
         with self.lock:
             now = time.monotonic()
-            if now - self.last_toggle < 0.25 or self.state != "idle":
+            if self.stopping.is_set() or self.model is None or now - self.last_toggle < 0.25 or self.state != "idle":
                 return
             self.last_toggle = now
             try:
@@ -341,7 +371,7 @@ class App:
             self.state = "transcribing"
             log(f"Send pressed. destination={self.active_prefix.strip()} Transcribing...")
             self.bridge_signal("transcribing")
-            threading.Thread(target=self.finish, args=(audio,), daemon=True).start()
+            self.worker(self.finish, audio)
 
     def select_channel(self, name):
         prefix = channel_prefix(name)
@@ -356,6 +386,8 @@ class App:
             self.bridge_signal("recording", name)
 
     def on_controller_press(self, button, modifier_held):
+        if self.stopping.is_set():
+            return
         c = self.settings.controller
         if self.state == "idle":
             if button == c["toggle"] and not modifier_held:
@@ -388,6 +420,8 @@ class App:
                 log("Nothing transcribed")
                 return
             log(f"Transcript: {text}")
+            if self.stopping.is_set():
+                return
             if not wow_frontmost() and not self.args.any_app:
                 log(f"WoW is not frontmost ({frontmost_app_name()}); not typing")
                 return
@@ -420,20 +454,39 @@ class App:
         time.sleep(0.03)
         self.keyboard.press(Key.enter); self.keyboard.release(Key.enter)
 
-    def run(self):
-        c = self.settings.controller
-        log("ForeverVoice ready")
-        mic = sd.query_devices(self.recorder.device, "input")["name"] if self.recorder.device is not None else sd.query_devices(kind="input")["name"]
-        log(f"Mic: {mic}")
-        log(
-            f"Controller: voice={c['toggle']} modifier={c['modifier']} "
-            f"slots=[{c['up_channel']}, {c['right_channel']}, "
-            f"{c['down_channel']}, {c['left_channel']}]"
-        )
-        watcher = XInputWatcher(self)
-        threading.Thread(target=watcher.run, daemon=True).start()
-        while True:
-            time.sleep(1.0)
+    def test_microphone(self, report):
+        with self.lock:
+            if self.stopping.is_set() or self.state != "idle" or self.model is None:
+                report("Helper is busy or Whisper is not ready.")
+                return
+            self.state = "testing"
+        try:
+            report("Recording for 3 seconds…")
+            self.recorder.start()
+            self.stopping.wait(3)
+            audio = self.recorder.stop()
+            if self.stopping.is_set():
+                return
+            report("Transcribing…")
+            segments, _ = self.model.transcribe(
+                audio, beam_size=1, best_of=1, vad_filter=True,
+                condition_on_previous_text=False, without_timestamps=True)
+            report(" ".join(segment.text.strip() for segment in segments).strip()
+                   or "No speech detected.")
+        except Exception as exc:
+            logging.exception("Microphone test failed")
+            report("Microphone test failed: " + str(exc))
+        finally:
+            self.recorder.stop()
+            self.state = "idle"
+
+    def run(self, instance):
+        from fv_desktop import Desktop
+        self.watcher = XInputWatcher(self)
+        self.worker(self.load_model)
+        self.worker(self.watcher.run)
+        Desktop(self, instance).run()
+
 
 def setup_mic():
     import tkinter as tk
@@ -478,17 +531,48 @@ def main():
     p.add_argument("--input-device", type=int)
     p.add_argument("--model", default="base")
     p.add_argument("--any-app", action="store_true")
+    p.add_argument("--enable-startup", action="store_true")
+    p.add_argument("--background", action="store_true")
     p.add_argument("--setup", action="store_true")
     p.add_argument("--list-devices", action="store_true")
     args = p.parse_args()
 
+    if args.enable_startup:
+        from fv_runtime import set_startup
+        set_startup(True)
+        return
     if args.list_devices:
         print(sd.query_devices())
         return
     if args.setup:
         setup_mic()
         return
-    App(args).run()
+    from fv_runtime import InstanceLock, configure_logging, migrate_startup
+    instance = InstanceLock(appdata_dir())
+    if not instance.acquire():
+        return
+    stream = configure_logging(appdata_dir())
+    app = None
+    try:
+        migrate_startup()
+        local = load_local_config()
+        if args.wow_dir == str(default_wow_dir()) and local.get("wow_dir"):
+            args.wow_dir = local["wow_dir"]
+        app = App(args)
+        app.run(instance)
+    except Exception:
+        logging.exception("ForeverVoice startup failed")
+        import tkinter.messagebox
+        tkinter.messagebox.showerror("ForeverVoice", "Startup failed. See " + str(appdata_dir() / "forevervoice.log"))
+    finally:
+        if app is not None:
+            app.stopping.set()
+            for worker in app.workers:
+                worker.join()
+            app.recorder.stop()
+        instance.close()
+        logging.shutdown()
+        stream.close()
 
 if __name__ == "__main__":
     main()
