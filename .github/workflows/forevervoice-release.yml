@@ -25,6 +25,10 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Run automated tests
+        shell: powershell
+        run: python -m unittest discover -s tests -v
+
       - name: Build one-click Setup EXE
         shell: powershell
         run: .\build-setup.ps1
@@ -36,18 +40,18 @@ jobs:
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ForeverVoiceSetup-v0.3.1
+          name: ForeverVoiceSetup-v0.4.0
           path: |
-            ForeverVoice/release/ForeverVoiceSetup-v0.3.1.exe
-            ForeverVoice/release/ForeverVoiceSetup-v0.3.1-SHA256.txt
+            ForeverVoice/release/ForeverVoiceSetup-v0.4.0.exe
+            ForeverVoice/release/ForeverVoiceSetup-v0.4.0-SHA256.txt
 
       - name: Publish GitHub release for tag
         if: startsWith(github.ref, 'refs/tags/forevervoice-v')
         uses: softprops/action-gh-release@v2
         with:
-          name: ForeverVoice v0.3.1 Beta
+          name: ForeverVoice v0.4.0 Beta
           prerelease: true
           body_path: ForeverVoice/CHANGELOG.md
           files: |
-            ForeverVoice/release/ForeverVoiceSetup-v0.3.1.exe
-            ForeverVoice/release/ForeverVoiceSetup-v0.3.1-SHA256.txt
+            ForeverVoice/release/ForeverVoiceSetup-v0.4.0.exe
+            ForeverVoice/release/ForeverVoiceSetup-v0.4.0-SHA256.txt
